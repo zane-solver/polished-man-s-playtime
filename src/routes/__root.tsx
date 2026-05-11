@@ -75,11 +75,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Polished Man — 5th Anniversary Sanctuary" },
       { name: "description", content: "An interactive 3D tribute to the Polished Design mascot — tilt, click, and play." },
       { name: "author", content: "Polished Design" },
-      { property: "og:title", content: "Polished Man — 5th Anniversary" },
-      { property: "og:description", content: "An interactive 3D tribute to the Polished Design mascot." },
+      { property: "og:title", content: "Polished Man — 5th Anniversary Sanctuary" },
+      { property: "og:description", content: "An interactive 3D tribute to the Polished Design mascot — tilt, click, and play." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Polished Man — 5th Anniversary Sanctuary" },
+      { name: "twitter:description", content: "An interactive 3D tribute to the Polished Design mascot — tilt, click, and play." },
     ],
     links: [
       {
