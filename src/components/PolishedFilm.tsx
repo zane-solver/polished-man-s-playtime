@@ -1,267 +1,291 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, RoundedBox, Sparkles, ContactShadows } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
+import { Environment, Float, Sparkles, ContactShadows, MeshTransmissionMaterial } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-/* ---------------- Global scroll progress (0..1) ---------------- */
-const scroll = { p: 0, mood: "idle" as "idle" | "blue" | "black" | "red", pulse: 0 };
+/* ---------------- Global scroll state ---------------- */
+const scroll = { p: 0, mood: "idle" as "idle" | "rose" | "gold" | "sky", pulse: 0, hover: 0 };
 
-/* ---------------- Mascot face shader ---------------- */
-const faceVert = /* glsl */ `
-  varying vec2 vUv;
-  void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
-`;
-const faceFrag = /* glsl */ `
-  precision highp float;
-  varying vec2 vUv;
-  uniform float uTime;
-  uniform float uReveal;   // 0..1 face wakes up
-  uniform float uMood;     // 0 idle, 1 blue, 2 black, 3 red
-  uniform float uPulse;    // transient pulse 0..1
+/* ---------------- Soft pastel color palette ---------------- */
+const PALETTE = {
+  rose: "#f7c8d4",
+  blush: "#f9d9e0",
+  gold: "#e8c890",
+  ivory: "#fbf3e6",
+  sky: "#cfe1f0",
+  pearl: "#ffffff",
+  mauve: "#c8a3b6",
+};
 
-  float circle(vec2 p, vec2 c, float r, float soft){
-    return 1.0 - smoothstep(r, r+soft, length(p-c));
-  }
-
-  void main(){
-    vec2 uv = vUv;
-    // eyes
-    float ey = 0.55;
-    float blink = step(0.985, fract(uTime*0.13));
-    float eyeR = mix(0.07, 0.005, blink);
-    float left  = circle(uv, vec2(0.38, ey), eyeR, 0.012);
-    float right = circle(uv, vec2(0.62, ey), eyeR, 0.012);
-
-    // smile / mouth (subtle)
-    float mouth = smoothstep(0.012, 0.0, abs(uv.y - 0.34 - sin(uv.x*8.0)*0.012)) *
-                  step(0.32, uv.x) * step(uv.x, 0.68);
-    mouth *= 0.35;
-
-    float face = max(max(left, right), mouth);
-
-    // base screen color by mood
-    vec3 cBlue = vec3(0.35, 0.75, 1.0);
-    vec3 cBlack= vec3(0.10, 0.18, 0.30);
-    vec3 cRed  = vec3(1.0, 0.35, 0.55);
-    vec3 cIdle = vec3(0.45, 0.78, 1.0);
-    vec3 col = cIdle;
-    col = mix(col, cBlue,  smoothstep(0.5,1.5,uMood) * step(uMood,1.5));
-    col = mix(col, cBlack, smoothstep(1.5,2.5,uMood) * step(uMood,2.5));
-    col = mix(col, cRed,   smoothstep(2.5,3.5,uMood));
-
-    // background screen subtle gradient
-    vec3 bg = mix(vec3(0.02,0.05,0.10), col*0.18, smoothstep(0.0,1.0,uv.y));
-    bg += 0.12*col*uPulse;
-
-    vec3 final = mix(vec3(0.0), bg + face*col*2.5, uReveal);
-    float alpha = uReveal * (0.85 + face*0.15);
-    gl_FragColor = vec4(final, alpha);
-  }
-`;
-
-function Mascot() {
+/* ---------------- Placeholder mascot — luminous silhouette ---------------- */
+function MascotPlaceholder() {
   const group = useRef<THREE.Group>(null!);
-  const mat = useRef<THREE.ShaderMaterial>(null!);
+  const halo = useRef<THREE.Mesh>(null!);
+  const inner = useRef<THREE.Mesh>(null!);
   const { mouse } = useThree();
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uReveal: { value: 0 },
-      uMood: { value: 0 },
-      uPulse: { value: 0 },
-    }),
-    []
-  );
 
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const t = state.clock.elapsedTime;
     if (!group.current) return;
-
-    // breathing float
-    group.current.position.y = -0.15 + Math.sin(t * 0.9) * 0.06;
-    // mouse parallax
-    const tx = mouse.x * 0.25;
-    const ty = -mouse.y * 0.18;
+    group.current.position.y = Math.sin(t * 0.7) * 0.1;
+    const tx = mouse.x * 0.35;
+    const ty = -mouse.y * 0.2;
     group.current.rotation.y += (tx - group.current.rotation.y) * 0.04;
     group.current.rotation.x += (ty - group.current.rotation.x) * 0.04;
 
-    // ending bow (last 10% of scroll)
-    const bow = Math.max(0, (scroll.p - 0.9) / 0.1);
-    group.current.rotation.x += bow * 0.35;
-    group.current.position.y -= bow * 0.4;
+    // hover/mood pulse on inner glow
+    scroll.pulse *= 0.93;
+    const pulse = scroll.pulse;
+    if (inner.current) {
+      const s = 1 + pulse * 0.18 + Math.sin(t * 1.4) * 0.015;
+      inner.current.scale.setScalar(s);
+    }
+    if (halo.current) {
+      halo.current.rotation.z = t * 0.15;
+      const m = halo.current.material as THREE.MeshBasicMaterial;
+      m.opacity = 0.35 + pulse * 0.4;
+    }
+  });
 
-    if (mat.current) {
-      mat.current.uniforms.uTime.value = t;
-      const target = Math.min(1, Math.max(0, (scroll.p - 0.08) / 0.18));
-      mat.current.uniforms.uReveal.value +=
-        (target - mat.current.uniforms.uReveal.value) * 0.05;
-      const moodVal =
-        scroll.mood === "blue" ? 1 : scroll.mood === "black" ? 2 : scroll.mood === "red" ? 3 : 0;
-      mat.current.uniforms.uMood.value +=
-        (moodVal - mat.current.uniforms.uMood.value) * 0.08;
-      scroll.pulse *= 0.92;
-      mat.current.uniforms.uPulse.value = scroll.pulse;
+  // mood color
+  const moodColor = useMemo(() => new THREE.Color(PALETTE.rose), []);
+  useFrame(() => {
+    const target = new THREE.Color(
+      scroll.mood === "rose" ? PALETTE.rose :
+      scroll.mood === "gold" ? PALETTE.gold :
+      scroll.mood === "sky" ? PALETTE.sky : PALETTE.blush
+    );
+    moodColor.lerp(target, 0.05);
+    if (inner.current) {
+      const m = inner.current.material as THREE.MeshStandardMaterial;
+      m.emissive = moodColor;
     }
   });
 
   return (
     <group ref={group}>
-      {/* Body */}
-      <RoundedBox args={[1.35, 1.55, 1.0]} radius={0.42} smoothness={6} position={[0, -0.25, 0]}>
-        <meshPhysicalMaterial
-          color="#050505"
-          metalness={0.85}
-          roughness={0.18}
-          clearcoat={1}
-          clearcoatRoughness={0.06}
-          envMapIntensity={1.6}
-          reflectivity={0.9}
-        />
-      </RoundedBox>
-
-      {/* Subtle metallic chest accent */}
-      <mesh position={[0, -0.15, 0.51]}>
-        <circleGeometry args={[0.08, 32]} />
-        <meshPhysicalMaterial color="#9aa3b2" metalness={1} roughness={0.25} />
+      {/* Outer glow halo */}
+      <mesh ref={halo} position={[0, 0.1, -0.4]}>
+        <ringGeometry args={[1.2, 1.9, 64]} />
+        <meshBasicMaterial color={PALETTE.rose} transparent opacity={0.35} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* Head */}
-      <group position={[0, 0.85, 0]}>
-        <mesh>
-          <sphereGeometry args={[0.78, 64, 64]} />
-          <meshPhysicalMaterial
-            color="#040404"
-            metalness={0.9}
-            roughness={0.14}
-            clearcoat={1}
-            clearcoatRoughness={0.04}
-            envMapIntensity={1.8}
+      {/* Soft glass capsule body — placeholder silhouette */}
+      <Float speed={1.2} rotationIntensity={0.15} floatIntensity={0.4}>
+        <mesh position={[0, -0.1, 0]}>
+          <capsuleGeometry args={[0.62, 0.9, 24, 48]} />
+          <MeshTransmissionMaterial
+            thickness={0.8}
+            roughness={0.05}
+            transmission={1}
+            ior={1.4}
+            chromaticAberration={0.04}
+            backside
+            color={PALETTE.pearl}
+            attenuationColor={PALETTE.rose}
+            attenuationDistance={2}
           />
         </mesh>
 
-        {/* Face screen — a flat disc nestled into the front of the head */}
-        <mesh position={[0, 0.0, 0.71]}>
-          <circleGeometry args={[0.46, 64]} />
-          <shaderMaterial
-            ref={mat}
-            uniforms={uniforms}
-            vertexShader={faceVert}
-            fragmentShader={faceFrag}
-            transparent
+        {/* Inner glowing core */}
+        <mesh ref={inner} position={[0, 0.05, 0]}>
+          <sphereGeometry args={[0.42, 48, 48]} />
+          <meshStandardMaterial
+            color={PALETTE.ivory}
+            emissive={PALETTE.rose}
+            emissiveIntensity={0.9}
+            roughness={0.3}
+            metalness={0.1}
           />
         </mesh>
 
-        {/* glow halo behind face */}
-        <pointLight position={[0, 0, 0.6]} intensity={1.2} distance={2.2} color="#5fb8ff" />
-      </group>
-
-      {/* Arms */}
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[s * 0.78, -0.2, 0]} rotation={[0, 0, s * 0.15]}>
-          <capsuleGeometry args={[0.16, 0.55, 8, 16]} />
-          <meshPhysicalMaterial color="#050505" metalness={0.85} roughness={0.18} clearcoat={1} />
+        {/* Tiny gold orbiting dot */}
+        <mesh position={[0.85, 0.4, 0.2]}>
+          <sphereGeometry args={[0.06, 16, 16]} />
+          <meshStandardMaterial color={PALETTE.gold} emissive={PALETTE.gold} emissiveIntensity={1.2} />
         </mesh>
-      ))}
+      </Float>
 
-      {/* Feet */}
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[s * 0.32, -1.15, 0.05]}>
-          <sphereGeometry args={[0.22, 32, 32]} />
-          <meshPhysicalMaterial color="#050505" metalness={0.85} roughness={0.18} clearcoat={1} />
-        </mesh>
-      ))}
+      {/* Pedestal disc */}
+      <mesh position={[0, -0.95, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.3, 1.1, 64]} />
+        <meshStandardMaterial color={PALETTE.gold} metalness={0.9} roughness={0.25} side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 }
 
-/* ---------------- Particle system: ambient + signature 磨 ---------------- */
-function buildCharTargets(count: number): Float32Array {
-  const size = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 220px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("磨", size / 2, size / 2 + 8);
-  const data = ctx.getImageData(0, 0, size, size).data;
-  const pts: number[] = [];
-  for (let y = 0; y < size; y += 2) {
-    for (let x = 0; x < size; x += 2) {
-      const i = (y * size + x) * 4;
-      if (data[i] > 128) pts.push(x, y);
+/* ---------------- Soft volumetric backdrop ---------------- */
+function Backdrop() {
+  const mat = useRef<THREE.ShaderMaterial>(null!);
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uMouse: { value: new THREE.Vector2(0, 0) },
+      uColorA: { value: new THREE.Color("#fbe9ef") }, // soft rose
+      uColorB: { value: new THREE.Color("#f4e6d0") }, // warm ivory
+      uColorC: { value: new THREE.Color("#dde9f3") }, // gentle blue
+    }),
+    []
+  );
+  const { mouse } = useThree();
+  useFrame((s) => {
+    if (mat.current) {
+      mat.current.uniforms.uTime.value = s.clock.elapsedTime;
+      mat.current.uniforms.uMouse.value.set(mouse.x, mouse.y);
     }
-  }
-  const out = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const j = (Math.floor(Math.random() * (pts.length / 2))) * 2;
-    const x = (pts[j] / size - 0.5) * 4.5;
-    const y = -(pts[j + 1] / size - 0.5) * 4.5;
-    out[i * 3] = x;
-    out[i * 3 + 1] = y;
-    out[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
-  }
-  return out;
+  });
+  return (
+    <mesh position={[0, 0, -6]} scale={[30, 18, 1]}>
+      <planeGeometry args={[1, 1, 1, 1]} />
+      <shaderMaterial
+        ref={mat}
+        uniforms={uniforms}
+        vertexShader={`varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`}
+        fragmentShader={`
+          precision highp float;
+          varying vec2 vUv;
+          uniform float uTime;
+          uniform vec2 uMouse;
+          uniform vec3 uColorA;
+          uniform vec3 uColorB;
+          uniform vec3 uColorC;
+          void main(){
+            vec2 uv = vUv;
+            vec2 m = uMouse * 0.15;
+            float d1 = smoothstep(0.0, 1.2, length(uv - vec2(0.3 + m.x, 0.7 + m.y)));
+            float d2 = smoothstep(0.0, 1.0, length(uv - vec2(0.7 - m.x, 0.3 - m.y)));
+            float wave = sin(uv.y*4.0 + uTime*0.3)*0.05;
+            vec3 col = mix(uColorA, uColorB, smoothstep(0.0, 1.0, uv.y + wave));
+            col = mix(col, uColorC, d1*0.55);
+            col = mix(col, uColorA, (1.0-d2)*0.25);
+            // soft vignette warmth
+            float v = smoothstep(1.4, 0.2, length(uv - 0.5));
+            col *= mix(0.92, 1.05, v);
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `}
+      />
+    </mesh>
+  );
 }
 
-function Particles() {
-  const COUNT = 2400;
+/* ---------------- Camera rig ---------------- */
+function CameraRig() {
+  const { camera, mouse } = useThree();
+  useFrame(() => {
+    const p = scroll.p;
+    let pos = new THREE.Vector3();
+    if (p < 0.2) {
+      const k = p / 0.2;
+      pos.set(0.2, 0.3, 6.5 - k * 1.2);
+    } else if (p < 0.45) {
+      const k = (p - 0.2) / 0.25;
+      const a = k * Math.PI * 0.5 - 0.25;
+      pos.set(Math.sin(a) * 4.0, 0.3, Math.cos(a) * 4.0);
+    } else if (p < 0.65) {
+      pos.set(0, 0.2, 5.0);
+    } else if (p < 0.88) {
+      const k = (p - 0.65) / 0.23;
+      pos.set(0, 0.1, 5.5 + k * 1.2);
+    } else {
+      const k = (p - 0.88) / 0.12;
+      pos.set(0, -0.1 + k * 0.05, 7.0 + k * 0.6);
+    }
+    pos.x += mouse.x * 0.18;
+    pos.y += mouse.y * 0.12;
+    camera.position.lerp(pos, 0.05);
+    camera.lookAt(0, 0.05, 0);
+  });
+  return null;
+}
+
+/* ---------------- Mood lights ---------------- */
+function MoodLights() {
+  const key = useRef<THREE.DirectionalLight>(null!);
+  const rim = useRef<THREE.PointLight>(null!);
+  const fill = useRef<THREE.PointLight>(null!);
+  useFrame(() => {
+    const reveal = Math.min(1, Math.max(0, (scroll.p - 0.04) / 0.2));
+    if (key.current) key.current.intensity = 0.4 + reveal * 1.0;
+    const target = new THREE.Color(
+      scroll.mood === "rose" ? PALETTE.rose :
+      scroll.mood === "gold" ? PALETTE.gold :
+      scroll.mood === "sky" ? PALETTE.sky : PALETTE.blush
+    );
+    if (rim.current) {
+      rim.current.color.lerp(target, 0.06);
+      rim.current.intensity = 1.2 * reveal + scroll.pulse * 0.8;
+    }
+    if (fill.current) {
+      fill.current.color.lerp(new THREE.Color(PALETTE.ivory), 0.05);
+      fill.current.intensity = 0.6 * reveal;
+    }
+  });
+  return (
+    <>
+      <ambientLight intensity={0.45} color={PALETTE.ivory} />
+      <directionalLight ref={key} position={[2.5, 3.5, 2]} intensity={0.4} color={PALETTE.pearl} />
+      <pointLight ref={rim} position={[-3, 1.5, -1]} intensity={0.8} color={PALETTE.rose} distance={12} />
+      <pointLight ref={fill} position={[3, -0.5, 2]} intensity={0.4} color={PALETTE.ivory} distance={10} />
+    </>
+  );
+}
+
+/* ---------------- Signature petals (particles forming a soft bloom) ---------------- */
+function Petals() {
+  const COUNT = 1200;
   const ref = useRef<THREE.Points>(null!);
   const mat = useRef<THREE.PointsMaterial>(null!);
-  const targets = useMemo(() => buildCharTargets(COUNT), []);
-  const origins = useMemo(() => {
-    const a = new Float32Array(COUNT * 3);
+  const { origins, targets } = useMemo(() => {
+    const o = new Float32Array(COUNT * 3);
+    const t = new Float32Array(COUNT * 3);
     for (let i = 0; i < COUNT; i++) {
-      // start near mascot center with slight cloud
-      const r = 0.4 + Math.random() * 0.2;
-      const t = Math.random() * Math.PI * 2;
-      const p = Math.acos(2 * Math.random() - 1);
-      a[i * 3] = r * Math.sin(p) * Math.cos(t);
-      a[i * 3 + 1] = r * Math.sin(p) * Math.sin(t) + 0.2;
-      a[i * 3 + 2] = r * Math.cos(p);
+      // origin: cloud near mascot
+      const r = 0.5 + Math.random() * 0.4;
+      const a = Math.random() * Math.PI * 2;
+      const b = Math.acos(2 * Math.random() - 1);
+      o[i * 3] = r * Math.sin(b) * Math.cos(a);
+      o[i * 3 + 1] = r * Math.sin(b) * Math.sin(a) * 0.6;
+      o[i * 3 + 2] = r * Math.cos(b);
+      // target: rose/spiral bloom
+      const k = i / COUNT;
+      const ang = k * Math.PI * 12;
+      const rad = 0.3 + k * 1.7;
+      t[i * 3] = Math.cos(ang) * rad;
+      t[i * 3 + 1] = Math.sin(ang) * rad * 0.55 + (Math.random() - 0.5) * 0.1;
+      t[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
     }
-    return a;
+    return { origins: o, targets: t };
   }, []);
   const positions = useMemo(() => new Float32Array(COUNT * 3), []);
 
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    // signature progress: scroll segment 0.62..0.82 form character; 0.82..0.9 hold; >0.9 dissipate
-    const s = scroll.p;
-    let k = 0; // 0 = origin (cloud near mascot), 1 = character target
-    if (s < 0.6) k = 0;
-    else if (s < 0.78) k = (s - 0.6) / 0.18;
-    else if (s < 0.88) k = 1;
-    else k = Math.max(0, 1 - (s - 0.88) / 0.06);
-
-    const arr = positions;
+  useFrame((s) => {
+    const t = s.clock.elapsedTime;
+    const sp = scroll.p;
+    let k = 0;
+    if (sp < 0.62) k = 0;
+    else if (sp < 0.8) k = (sp - 0.62) / 0.18;
+    else if (sp < 0.9) k = 1;
+    else k = Math.max(0, 1 - (sp - 0.9) / 0.06);
+    const e = k * k * (3 - 2 * k);
     for (let i = 0; i < COUNT; i++) {
       const ix = i * 3;
-      const ox = origins[ix],
-        oy = origins[ix + 1],
-        oz = origins[ix + 2];
-      const tx = targets[ix],
-        ty = targets[ix + 1],
-        tz = targets[ix + 2];
-      // ease
-      const e = k * k * (3 - 2 * k);
-      const wob = Math.sin(t * 1.3 + i * 0.07) * 0.04 * (1 - e);
-      arr[ix] = ox + (tx - ox) * e + wob;
-      arr[ix + 1] = oy + (ty - oy) * e + wob;
-      arr[ix + 2] = oz + (tz - oz) * e;
+      const wob = Math.sin(t * 1.1 + i * 0.05) * 0.05 * (1 - e);
+      positions[ix] = origins[ix] + (targets[ix] - origins[ix]) * e + wob;
+      positions[ix + 1] = origins[ix + 1] + (targets[ix + 1] - origins[ix + 1]) * e + wob * 0.6;
+      positions[ix + 2] = origins[ix + 2] + (targets[ix + 2] - origins[ix + 2]) * e;
     }
     if (ref.current) {
       const attr = ref.current.geometry.getAttribute("position") as THREE.BufferAttribute;
-      attr.array = arr;
+      attr.array = positions;
       attr.needsUpdate = true;
+      ref.current.rotation.z = t * 0.05 * e;
     }
     if (mat.current) {
-      mat.current.opacity = 0.05 + k * 0.85;
-      mat.current.size = 0.018 + k * 0.012;
+      mat.current.opacity = 0.1 + e * 0.85;
+      mat.current.size = 0.025 + e * 0.02;
     }
   });
 
@@ -278,8 +302,8 @@ function Particles() {
       </bufferGeometry>
       <pointsMaterial
         ref={mat}
-        size={0.02}
-        color="#9ed6ff"
+        size={0.025}
+        color={PALETTE.rose}
         transparent
         opacity={0.1}
         depthWrite={false}
@@ -290,111 +314,39 @@ function Particles() {
   );
 }
 
-/* ---------------- Camera rig driven by scroll ---------------- */
-function CameraRig() {
-  const { camera, mouse } = useThree();
-  const target = useMemo(() => new THREE.Vector3(0, 0, 0), []);
-  useFrame(() => {
-    const p = scroll.p;
-    // keyframes
-    // 0.0 dark wide / off-axis
-    // 0.2 reveal closer
-    // 0.4 hero orbit
-    // 0.6 pulled back for signature
-    // 0.95 ending soft
-    let pos = new THREE.Vector3();
-    if (p < 0.2) {
-      const k = p / 0.2;
-      pos.set(0.4, 0.3, 7 - k * 1.5);
-    } else if (p < 0.45) {
-      const k = (p - 0.2) / 0.25;
-      const a = k * Math.PI * 0.6 - 0.3;
-      pos.set(Math.sin(a) * 4.2, 0.4 + k * 0.2, Math.cos(a) * 4.2);
-    } else if (p < 0.6) {
-      const k = (p - 0.45) / 0.15;
-      pos.set(Math.sin(0.6) * (4.2 + k * 0.6), 0.6, Math.cos(0.6) * (4.2 + k * 0.4));
-    } else if (p < 0.88) {
-      const k = (p - 0.6) / 0.28;
-      pos.set(0, 0.2, 6 + k * 1.5);
-    } else {
-      const k = (p - 0.88) / 0.12;
-      pos.set(0, -0.2 + k * 0.1, 6.5 + k * 0.8);
-    }
-    // micro parallax
-    pos.x += mouse.x * 0.15;
-    pos.y += mouse.y * 0.1;
-    camera.position.lerp(pos, 0.06);
-    target.set(0, 0.1, 0);
-    camera.lookAt(target);
-  });
-  return null;
-}
-
-/* ---------------- Lighting that responds to mood + scroll ---------------- */
-function MoodLights() {
-  const rim = useRef<THREE.PointLight>(null!);
-  const key = useRef<THREE.DirectionalLight>(null!);
-  const fill = useRef<THREE.PointLight>(null!);
-  useFrame(() => {
-    const reveal = Math.min(1, Math.max(0, (scroll.p - 0.05) / 0.25));
-    if (key.current) key.current.intensity = 0.2 + reveal * 1.3;
-    const moodK = scroll.mood;
-    const target = new THREE.Color(
-      moodK === "blue" ? "#4aa9ff" :
-      moodK === "red" ? "#ff5f7a" :
-      moodK === "black" ? "#1a2030" : "#7fbfff"
-    );
-    if (rim.current) {
-      rim.current.color.lerp(target, 0.08);
-      rim.current.intensity = (moodK === "black" ? 0.4 : 1.6) * reveal;
-    }
-    if (fill.current) {
-      const fillTarget = new THREE.Color(moodK === "red" ? "#ff8aa0" : "#9ec8ff");
-      fill.current.color.lerp(fillTarget, 0.08);
-      fill.current.intensity = (moodK === "black" ? 0.2 : 0.9) * reveal;
-    }
-  });
-  return (
-    <>
-      <ambientLight intensity={0.08} />
-      <directionalLight ref={key} position={[2.5, 3.5, 2]} intensity={0.2} color="#ffffff" />
-      <pointLight ref={rim} position={[-3, 2, -2]} intensity={0} color="#7fbfff" distance={12} />
-      <pointLight ref={fill} position={[3, -1, 2]} intensity={0} color="#9ec8ff" distance={10} />
-    </>
-  );
-}
-
 /* ---------------- Scene ---------------- */
 function Scene() {
   return (
     <>
-      <color attach="background" args={["#020205"]} />
-      <fog attach="fog" args={["#020205", 6, 18]} />
+      <fog attach="fog" args={["#fbe9ef", 9, 22]} />
+      <Backdrop />
       <CameraRig />
       <MoodLights />
       <Suspense fallback={null}>
-        <Mascot />
-        <Environment preset="studio" environmentIntensity={0.35} />
+        <MascotPlaceholder />
+        <Environment preset="apartment" environmentIntensity={0.5} />
       </Suspense>
       <ContactShadows
-        position={[0, -1.45, 0]}
-        opacity={0.55}
-        scale={8}
-        blur={3}
-        far={3}
-        color="#000000"
+        position={[0, -0.95, 0]}
+        opacity={0.35}
+        scale={6}
+        blur={3.2}
+        far={2.5}
+        color="#b58aa0"
       />
-      <Particles />
-      <Sparkles count={50} scale={[8, 6, 6]} size={1.4} speed={0.15} color="#9ec8ff" opacity={0.4} />
+      <Petals />
+      <Sparkles count={70} scale={[10, 6, 6]} size={2} speed={0.18} color={PALETTE.gold} opacity={0.55} />
+      <Sparkles count={40} scale={[14, 8, 8]} size={1.2} speed={0.1} color={PALETTE.rose} opacity={0.4} />
       <EffectComposer>
-        <Bloom intensity={0.9} luminanceThreshold={0.35} luminanceSmoothing={0.4} mipmapBlur />
-        <Vignette eskil={false} offset={0.2} darkness={0.85} />
+        <Bloom intensity={0.65} luminanceThreshold={0.55} luminanceSmoothing={0.5} mipmapBlur />
+        <ChromaticAberration offset={new THREE.Vector2(0.0006, 0.0006)} radialModulation={false} modulationOffset={0} />
+        <Vignette eskil={false} offset={0.25} darkness={0.55} />
       </EffectComposer>
     </>
   );
 }
 
-/* ---------------- HUD with sections + interaction buttons ---------------- */
+/* ---------------- HUD ---------------- */
 export default function PolishedFilm() {
   const [mounted, setMounted] = useState(false);
   const [, force] = useState(0);
@@ -405,7 +357,6 @@ export default function PolishedFilm() {
     const onScroll = () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
       scroll.p = Math.min(1, Math.max(0, window.scrollY / h));
-      // section 3 visibility for buttons
       setInteractVisible(scroll.p > 0.4 && scroll.p < 0.62);
       force((n) => n + 1);
     };
@@ -414,63 +365,72 @@ export default function PolishedFilm() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const setMood = (m: "blue" | "black" | "red") => {
+  const setMood = (m: "rose" | "gold" | "sky") => {
     scroll.mood = m;
     scroll.pulse = 1;
     setTimeout(() => {
       if (scroll.mood === m) scroll.mood = "idle";
-    }, 2600);
+    }, 2800);
   };
 
-  if (!mounted) {
-    return <div className="fixed inset-0 bg-black" />;
-  }
+  if (!mounted) return <div className="fixed inset-0" style={{ background: PALETTE.blush }} />;
 
   const p = scroll.p;
-  const fadeIntro = p < 0.08 ? 1 : Math.max(0, 1 - (p - 0.08) / 0.06);
+  const fadeIntro = p < 0.08 ? 1 : Math.max(0, 1 - (p - 0.08) / 0.07);
   const heroOn = p > 0.18 && p < 0.42 ? 1 : 0;
-  const sigOn = p > 0.78 && p < 0.9 ? 1 : 0;
-  const endOn = p > 0.92 ? Math.min(1, (p - 0.92) / 0.04) : 0;
+  const sigOn = p > 0.78 && p < 0.92 ? 1 : 0;
+  const endOn = p > 0.93 ? Math.min(1, (p - 0.93) / 0.04) : 0;
+  const chapter = p < 0.18 ? "I" : p < 0.42 ? "II" : p < 0.62 ? "III" : p < 0.92 ? "IV" : "V";
 
   return (
     <>
-      {/* Fixed cinematic canvas */}
-      <div className="fixed inset-0 z-0 bg-black">
+      {/* Cinematic canvas */}
+      <div className="fixed inset-0 z-0" style={{ background: "linear-gradient(180deg,#fbe9ef 0%,#f4e6d0 60%,#dde9f3 100%)" }}>
         <Canvas
           dpr={[1, 1.75]}
           gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-          camera={{ position: [0, 0.3, 7], fov: 38 }}
+          camera={{ position: [0, 0.3, 6.5], fov: 38 }}
         >
           <Scene />
         </Canvas>
-        {/* film grain + subtle gradient overlay */}
+
+        {/* Soft grain + warm corners */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)",
-            mixBlendMode: "multiply",
+              "radial-gradient(ellipse at center, transparent 55%, rgba(200,140,160,0.18) 100%)",
           }}
         />
-        {/* End fade-to-black */}
+        {/* End fade */}
         <div
-          className="pointer-events-none absolute inset-0 bg-black transition-opacity duration-700"
-          style={{ opacity: endOn * 0.85 }}
+          className="pointer-events-none absolute inset-0 transition-opacity duration-700"
+          style={{ opacity: endOn * 0.7, background: "linear-gradient(180deg,#fbf3e6,#f7c8d4)" }}
         />
       </div>
 
       {/* HUD */}
-      <div className="pointer-events-none fixed inset-0 z-10">
+      <div className="pointer-events-none fixed inset-0 z-10" style={{ color: "#5a3b48" }}>
         {/* Top brand */}
-        <div className="absolute top-6 left-6 md:top-8 md:left-10 flex items-center gap-3 opacity-80">
-          <div className="h-1.5 w-1.5 rounded-full bg-white/90" />
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.5em] text-white/70">
-            Polish Design Studio
+        <div className="absolute top-6 left-6 md:top-9 md:left-12 flex items-center gap-3">
+          <div className="h-1.5 w-1.5 rounded-full" style={{ background: "#c8a3b6" }} />
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={{ color: "#8a6677" }}>
+            Polish · Atelier
           </p>
         </div>
-        <div className="absolute top-6 right-6 md:top-8 md:right-10 text-right opacity-70">
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.5em] text-white/60">
-            Chapter {p < 0.18 ? "01" : p < 0.42 ? "02" : p < 0.62 ? "03" : p < 0.9 ? "04" : "05"}
+        <div className="absolute top-6 right-6 md:top-9 md:right-12 text-right">
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={{ color: "#8a6677" }}>
+            Chapter&nbsp;&nbsp;{chapter}&nbsp;·&nbsp;Five Years of Patience
+          </p>
+        </div>
+
+        {/* Bottom-left meta */}
+        <div className="absolute bottom-6 left-6 md:bottom-9 md:left-12 max-w-[220px]">
+          <p className="text-[10px] uppercase tracking-[0.5em]" style={{ color: "#a98598" }}>
+            an interactive bloom
+          </p>
+          <p className="mt-2 text-[10px] tracking-wider" style={{ color: "#a98598" }}>
+            scroll &nbsp;·&nbsp; hover &nbsp;·&nbsp; press
           </p>
         </div>
 
@@ -480,61 +440,112 @@ export default function PolishedFilm() {
           style={{ opacity: fadeIntro }}
         >
           <p
-            className="text-7xl md:text-9xl font-light tracking-tight text-white"
-            style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            className="text-[20vw] md:text-[14rem] leading-none font-light"
+            style={{
+              fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
+              color: "transparent",
+              backgroundImage: "linear-gradient(180deg,#c8a3b6,#e8c890)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              filter: "drop-shadow(0 4px 24px rgba(200,140,160,0.35))",
+            }}
           >
             磨
           </p>
-          <p className="mt-6 text-xs md:text-sm uppercase tracking-[0.55em] text-white/55">
+          <p className="mt-6 text-xs md:text-sm uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
             to refine — with patience
           </p>
-          <p className="mt-16 text-[10px] uppercase tracking-[0.5em] text-white/35">
-            scroll to begin
-          </p>
-        </div>
-
-        {/* Section 2 — Hero label */}
-        <div
-          className="absolute bottom-12 left-0 right-0 flex flex-col items-center transition-opacity duration-700"
-          style={{ opacity: heroOn }}
-        >
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em] text-white/55">
-            meet the polished man
-          </p>
-          <p className="mt-3 text-2xl md:text-4xl font-extralight tracking-[0.25em] text-white/90">
-            A QUIET COMPANION
-          </p>
-        </div>
-
-        {/* Section 3 — Interaction buttons */}
-        <div
-          className={`absolute bottom-16 left-0 right-0 flex flex-col items-center gap-6 transition-opacity duration-700 ${
-            interactVisible ? "opacity-100 pointer-events-auto" : "opacity-0"
-          }`}
-        >
-          <p className="text-[10px] uppercase tracking-[0.55em] text-white/50">
-            press to feel
-          </p>
-          <div className="flex items-center gap-5">
-            <MoodButton color="#3a8dff" label="calm" onClick={() => setMood("blue")} />
-            <MoodButton color="#0a0a0a" label="still" border onClick={() => setMood("black")} />
-            <MoodButton color="#ff4d6d" label="love" heart onClick={() => setMood("red")} />
+          <div className="mt-12 flex items-center gap-3" style={{ color: "#a98598" }}>
+            <span className="h-px w-16" style={{ background: "currentColor" }} />
+            <span className="text-[10px] uppercase tracking-[0.6em]">scroll to bloom</span>
+            <span className="h-px w-16" style={{ background: "currentColor" }} />
           </div>
         </div>
 
-        {/* Section 4 — Signature label */}
+        {/* Section 2 — Hero */}
+        <div
+          className="absolute bottom-24 left-0 right-0 flex flex-col items-center transition-opacity duration-700"
+          style={{ opacity: heroOn }}
+        >
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+            meet the polished one
+          </p>
+          <p
+            className="mt-3 text-3xl md:text-5xl font-light tracking-[0.3em]"
+            style={{
+              color: "transparent",
+              backgroundImage: "linear-gradient(120deg,#a36b80,#e8c890,#a36b80)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              fontFamily: "'Cormorant Garamond', serif",
+            }}
+          >
+            A QUIET COMPANION
+          </p>
+          {/* Floating side panels */}
+          <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 flex-col gap-2 pl-12">
+            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
+              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Material</p>
+              <p className="text-sm" style={{ color: "#5a3b48" }}>Hand-poured glass</p>
+            </div>
+            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
+              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Finish</p>
+              <p className="text-sm" style={{ color: "#5a3b48" }}>Polished rose gold</p>
+            </div>
+          </div>
+          <div className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 flex-col gap-2 pr-12 items-end">
+            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
+              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Mood</p>
+              <p className="text-sm" style={{ color: "#5a3b48" }}>Soft &amp; luminous</p>
+            </div>
+            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
+              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Origin</p>
+              <p className="text-sm" style={{ color: "#5a3b48" }}>Atelier No. 5</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3 — Interactive moods */}
+        <div
+          className={`absolute bottom-20 left-0 right-0 flex flex-col items-center gap-6 transition-opacity duration-700 ${
+            interactVisible ? "opacity-100 pointer-events-auto" : "opacity-0"
+          }`}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+            press a feeling
+          </p>
+          <div className="flex items-center gap-8">
+            <MoodButton color={PALETTE.rose} accent="#a36b80" label="tenderness" onClick={() => setMood("rose")} />
+            <MoodButton color={PALETTE.gold} accent="#a07a3c" label="warmth" onClick={() => setMood("gold")} />
+            <MoodButton color={PALETTE.sky} accent="#6f8aa3" label="serenity" onClick={() => setMood("sky")} />
+          </div>
+          <p className="text-[10px] tracking-[0.4em]" style={{ color: "#a98598" }}>
+            the room responds
+          </p>
+        </div>
+
+        {/* Section 4 — Signature */}
         <div
           className="absolute top-1/2 left-0 right-0 -translate-y-1/2 text-center transition-opacity duration-700"
           style={{ opacity: sigOn }}
         >
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em] text-white/55">
-            from particle to permanence
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+            from a whisper to a bloom
           </p>
           <p
-            className="mt-6 text-3xl md:text-5xl font-light tracking-[0.35em] text-white"
-            style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            className="mt-6 text-3xl md:text-5xl font-light tracking-[0.4em]"
+            style={{
+              fontFamily: "'Cormorant Garamond', serif",
+              color: "transparent",
+              backgroundImage: "linear-gradient(120deg,#a36b80,#e8c890,#cfe1f0,#a36b80)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+            }}
           >
-            POLISH&nbsp;&nbsp;DESIGN
+            POLISH&nbsp;&nbsp;ATELIER
+          </p>
+          <p className="mt-4 text-xs tracking-[0.45em]" style={{ color: "#a98598" }}>
+            est. five years &nbsp;·&nbsp; crafted in light
           </p>
         </div>
 
@@ -543,66 +554,76 @@ export default function PolishedFilm() {
           className="absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-1000"
           style={{ opacity: endOn }}
         >
-          <p className="text-xs uppercase tracking-[0.55em] text-white/50">
+          <p className="text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
             crafted with patience
           </p>
-          <p className="mt-4 text-2xl md:text-3xl font-extralight tracking-[0.35em] text-white/85">
-            POLISH DESIGN
+          <p
+            className="mt-4 text-2xl md:text-3xl font-extralight tracking-[0.4em]"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            until next bloom
           </p>
-          <p className="mt-12 text-[10px] uppercase tracking-[0.55em] text-white/30">
-            est. five years
-          </p>
+          <div className="mt-10 flex items-center gap-6 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#a98598" }}>
+            <span>instagram</span>
+            <span className="h-px w-8" style={{ background: "currentColor" }} />
+            <span>journal</span>
+            <span className="h-px w-8" style={{ background: "currentColor" }} />
+            <span>contact</span>
+          </div>
         </div>
 
-        {/* Scroll progress rail */}
-        <div className="absolute right-6 md:right-10 top-1/2 -translate-y-1/2 h-40 w-px bg-white/10">
+        {/* Vertical scroll rail */}
+        <div className="absolute right-6 md:right-12 top-1/2 -translate-y-1/2 h-44 w-px" style={{ background: "rgba(168,116,140,0.25)" }}>
           <div
-            className="absolute left-0 top-0 w-px bg-white/70 transition-all"
-            style={{ height: `${p * 100}%` }}
+            className="absolute left-0 top-0 w-px transition-all"
+            style={{ height: `${p * 100}%`, background: "linear-gradient(180deg,#a36b80,#e8c890)" }}
+          />
+          <div
+            className="absolute -left-1 w-2 h-2 rounded-full transition-all"
+            style={{ top: `calc(${p * 100}% - 4px)`, background: "#e8c890", boxShadow: "0 0 12px rgba(232,200,144,0.8)" }}
           />
         </div>
       </div>
 
-      {/* Scroll spacer (six full screens) */}
-      <div className="relative z-0" style={{ height: "600vh" }} />
+      {/* Scroll spacer */}
+      <div className="relative z-0" style={{ height: "650vh" }} />
     </>
   );
 }
 
 function MoodButton({
   color,
+  accent,
   label,
   onClick,
-  border,
-  heart,
 }: {
   color: string;
+  accent: string;
   label: string;
   onClick: () => void;
-  border?: boolean;
-  heart?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-center gap-2 transition-transform hover:scale-[1.06] active:scale-95"
+      onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.4); }}
+      className="group flex flex-col items-center gap-3 transition-transform duration-500 hover:scale-110 active:scale-95"
     >
-      <span
-        className="flex h-14 w-14 items-center justify-center rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-all group-hover:shadow-[0_8px_40px_rgba(255,255,255,0.18)]"
-        style={{
-          background: heart
-            ? `radial-gradient(circle at 30% 30%, #ff8aa0, ${color})`
-            : `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), ${color})`,
-          border: border ? "1px solid rgba(255,255,255,0.18)" : "none",
-        }}
-      >
-        {heart ? (
-          <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white/95">
-            <path d="M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1.2 5 3 1.5-1.8 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z" />
-          </svg>
-        ) : null}
+      <span className="relative flex h-16 w-16 items-center justify-center rounded-full">
+        <span
+          className="absolute inset-0 rounded-full opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-md"
+          style={{ background: `radial-gradient(circle, ${color} 0%, transparent 70%)` }}
+        />
+        <span
+          className="relative h-12 w-12 rounded-full"
+          style={{
+            background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.7), ${color} 60%, ${accent})`,
+            boxShadow: `0 8px 30px ${color}88, inset 0 -3px 8px rgba(0,0,0,0.06)`,
+          }}
+        />
       </span>
-      <span className="text-[10px] uppercase tracking-[0.4em] text-white/60">{label}</span>
+      <span className="text-[10px] uppercase tracking-[0.45em]" style={{ color: "#8a6677" }}>
+        {label}
+      </span>
     </button>
   );
 }
