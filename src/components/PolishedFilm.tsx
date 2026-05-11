@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, RoundedBox, Sparkles, ContactShadows } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -388,7 +388,6 @@ function Scene() {
       <Sparkles count={50} scale={[8, 6, 6]} size={1.4} speed={0.15} color="#9ec8ff" opacity={0.4} />
       <EffectComposer>
         <Bloom intensity={0.9} luminanceThreshold={0.35} luminanceSmoothing={0.4} mipmapBlur />
-        <ChromaticAberration offset={[0.0006, 0.0006] as unknown as THREE.Vector2} radialModulation={false} modulationOffset={0} />
         <Vignette eskil={false} offset={0.2} darkness={0.85} />
       </EffectComposer>
     </>
