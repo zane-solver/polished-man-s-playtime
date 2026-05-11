@@ -351,6 +351,8 @@ export default function PolishedFilm() {
   const [mounted, setMounted] = useState(false);
   const [, force] = useState(0);
   const [interactVisible, setInteractVisible] = useState(false);
+  const [introPhase, setIntroPhase] = useState<0 | 1 | 2 | 3>(0);
+  // 0 = gradient only, 1 = text in, 2 = bloom reveal, 3 = fully gone
 
   useEffect(() => {
     setMounted(true);
@@ -362,7 +364,13 @@ export default function PolishedFilm() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    const t1 = setTimeout(() => setIntroPhase(1), 350);
+    const t2 = setTimeout(() => setIntroPhase(2), 1900);
+    const t3 = setTimeout(() => setIntroPhase(3), 3400);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+    };
   }, []);
 
   const setMood = (m: "rose" | "gold" | "sky") => {
@@ -587,7 +595,148 @@ export default function PolishedFilm() {
 
       {/* Scroll spacer */}
       <div className="relative z-0" style={{ height: "650vh" }} />
+
+      {/* Cinematic intro overlay */}
+      <IntroOverlay phase={introPhase} onSkip={() => setIntroPhase(3)} />
     </>
+  );
+}
+
+function IntroOverlay({ phase, onSkip }: { phase: 0 | 1 | 2 | 3; onSkip: () => void }) {
+  if (phase >= 3) return null;
+  const opacity = phase === 2 ? 0 : 1;
+  return (
+    <div
+      onClick={onSkip}
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden transition-opacity duration-[1400ms] ease-out"
+      style={{
+        opacity,
+        pointerEvents: phase === 2 ? "none" : "auto",
+        background:
+          "radial-gradient(ellipse at 50% 40%, #fff7f1 0%, #f9dee6 35%, #efd6c4 65%, #d8e4ef 100%)",
+      }}
+    >
+      {/* soft drifting glows */}
+      <div className="pointer-events-none absolute inset-0">
+        {[
+          { c: "#f7c8d4", x: "20%", y: "30%", s: 520, d: "0s" },
+          { c: "#e8c890", x: "75%", y: "60%", s: 600, d: "1.2s" },
+          { c: "#cfe1f0", x: "55%", y: "20%", s: 460, d: "0.6s" },
+          { c: "#f9d9e0", x: "30%", y: "75%", s: 540, d: "1.8s" },
+        ].map((g, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full blur-3xl opacity-60 intro-glow"
+            style={{
+              background: `radial-gradient(circle, ${g.c} 0%, transparent 70%)`,
+              width: g.s,
+              height: g.s,
+              left: g.x,
+              top: g.y,
+              transform: "translate(-50%, -50%)",
+              animationDelay: g.d,
+            }}
+          />
+        ))}
+        {/* floating particles */}
+        {Array.from({ length: 28 }).map((_, i) => {
+          const left = (i * 37) % 100;
+          const delay = (i * 0.23) % 4;
+          const size = 2 + ((i * 13) % 5);
+          const dur = 7 + ((i * 7) % 6);
+          return (
+            <span
+              key={i}
+              className="absolute rounded-full intro-particle"
+              style={{
+                left: `${left}%`,
+                bottom: `-10px`,
+                width: size,
+                height: size,
+                background: "rgba(255,255,255,0.85)",
+                boxShadow: "0 0 12px rgba(255,220,230,0.9)",
+                animationDelay: `${delay}s`,
+                animationDuration: `${dur}s`,
+              }}
+            />
+          );
+        })}
+        {/* central spotlight bloom for reveal */}
+        <div
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-[1600ms] ease-out"
+          style={{
+            width: phase >= 1 ? 720 : 120,
+            height: phase >= 1 ? 720 : 120,
+            background:
+              "radial-gradient(circle, rgba(255,255,255,0.85) 0%, rgba(255,236,224,0.4) 35%, transparent 70%)",
+            opacity: phase >= 1 ? 1 : 0,
+            filter: "blur(8px)",
+          }}
+        />
+      </div>
+
+      {/* Text */}
+      <div
+        className="relative z-10 flex flex-col items-center text-center px-6 transition-all duration-[1400ms] ease-out"
+        style={{
+          color: "#5a3b48",
+          opacity: phase >= 1 ? 1 : 0,
+          transform: `translateY(${phase >= 1 ? 0 : 18}px)`,
+        }}
+      >
+        <div
+          className="text-[7rem] md:text-[10rem] leading-none font-extralight intro-mo"
+          style={{
+            fontFamily: '"Cormorant Garamond", "Songti SC", serif',
+            background:
+              "linear-gradient(180deg, #6a4452 0%, #b88a78 50%, #8a6677 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            textShadow: "0 0 40px rgba(247,200,212,0.5)",
+          }}
+        >
+          磨
+        </div>
+        <div
+          className="mt-6 text-[11px] md:text-xs uppercase tracking-[0.55em]"
+          style={{ color: "#8a6677" }}
+        >
+          to refine — with patience
+        </div>
+        <div
+          className="mt-10 text-[10px] tracking-[0.4em] uppercase opacity-60 transition-opacity duration-700"
+          style={{ color: "#a98598", opacity: phase >= 1 ? 0.6 : 0 }}
+        >
+          tap to enter
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes introParticleRise {
+          0% { transform: translateY(0) translateX(0); opacity: 0; }
+          15% { opacity: 1; }
+          100% { transform: translateY(-110vh) translateX(20px); opacity: 0; }
+        }
+        .intro-particle {
+          animation-name: introParticleRise;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+        @keyframes introGlowDrift {
+          0%, 100% { transform: translate(-50%, -50%) scale(1); }
+          50% { transform: translate(-48%, -52%) scale(1.08); }
+        }
+        .intro-glow {
+          animation: introGlowDrift 9s ease-in-out infinite;
+        }
+        @keyframes introMoBreathe {
+          0%, 100% { letter-spacing: 0; filter: drop-shadow(0 0 30px rgba(247,200,212,0.4)); }
+          50% { letter-spacing: 0.04em; filter: drop-shadow(0 0 50px rgba(247,200,212,0.7)); }
+        }
+        .intro-mo { animation: introMoBreathe 4s ease-in-out infinite; }
+      `}</style>
+    </div>
   );
 }
 
