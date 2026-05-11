@@ -483,7 +483,7 @@ export default function PolishedFilm() {
             A QUIET COMPANION
           </p>
           {/* Floating side panels */}
-          <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 flex-col gap-2 pl-12">
+          <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 flex-col gap-4 pl-12">
             <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
               <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Material</p>
               <p className="text-sm" style={{ color: "#5a3b48" }}>Hand-poured glass</p>
@@ -493,7 +493,7 @@ export default function PolishedFilm() {
               <p className="text-sm" style={{ color: "#5a3b48" }}>Polished rose gold</p>
             </div>
           </div>
-          <div className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 flex-col gap-2 pr-12 items-end">
+          <div className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 flex-col gap-4 pr-12 items-end">
             <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
               <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Mood</p>
               <p className="text-sm" style={{ color: "#5a3b48" }}>Soft &amp; luminous</p>
