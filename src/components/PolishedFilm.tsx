@@ -64,7 +64,7 @@ function MascotPlaceholder() {
   });
 
   return (
-    <group ref={group}>
+    <group ref={group} scale={1.35}>
       {/* Outer glow halo */}
       <mesh ref={halo} position={[0, 0.1, -0.4]}>
         <ringGeometry args={[1.2, 1.9, 64]} />
@@ -445,11 +445,11 @@ export default function PolishedFilm() {
 
         {/* Section 1 — Intro */}
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-1000"
+          className="absolute inset-x-0 top-[6%] flex flex-col items-center text-center transition-opacity duration-1000"
           style={{ opacity: fadeIntro }}
         >
           <p
-            className="text-[20vw] md:text-[14rem] leading-none font-light"
+            className="text-[7rem] md:text-[9rem] leading-none font-light"
             style={{
               fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
               color: "transparent",
@@ -461,10 +461,10 @@ export default function PolishedFilm() {
           >
             磨
           </p>
-          <p className="mt-6 text-xs md:text-sm uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+          <p className="mt-3 text-xs md:text-sm uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
             to refine — with patience
           </p>
-          <div className="mt-12 flex items-center gap-3" style={{ color: "#a98598" }}>
+          <div className="mt-6 flex items-center gap-3" style={{ color: "#a98598" }}>
             <span className="h-px w-16" style={{ background: "currentColor" }} />
             <span className="text-[10px] uppercase tracking-[0.6em]">scroll to bloom</span>
             <span className="h-px w-16" style={{ background: "currentColor" }} />
