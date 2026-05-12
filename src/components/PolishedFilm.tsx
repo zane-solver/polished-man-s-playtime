@@ -391,11 +391,23 @@ export default function PolishedFilm() {
   if (!mounted) return <div className="fixed inset-0" style={{ background: PALETTE.blush }} />;
 
   const p = scroll.p;
-  const fadeIntro = p < 0.08 ? 1 : Math.max(0, 1 - (p - 0.08) / 0.07);
-  const heroOn = p > 0.18 && p < 0.42 ? 1 : 0;
-  const sigOn = p > 0.78 && p < 0.92 ? 1 : 0;
+  // 11 cinematic chapters, each ~9% of scroll
+  const seg = (i: number) => [i / 11, (i + 1) / 11] as const;
+  // soft window opacity with fade-in / fade-out tails
+  const win = (start: number, end: number, fade = 0.025) => {
+    if (p < start - fade || p > end + fade) return 0;
+    if (p < start) return (p - (start - fade)) / fade;
+    if (p > end) return 1 - (p - end) / fade;
+    return 1;
+  };
+  const s = Array.from({ length: 11 }, (_, i) => {
+    const [a, b] = seg(i);
+    return win(a, b);
+  });
   const endOn = p > 0.93 ? Math.min(1, (p - 0.93) / 0.04) : 0;
-  const chapter = p < 0.18 ? "I" : p < 0.42 ? "II" : p < 0.62 ? "III" : p < 0.92 ? "IV" : "V";
+  const romans = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI"];
+  const chapter = romans[Math.min(10, Math.floor(p * 11))];
+  const fadeIntro = s[0];
 
   return (
     <>
