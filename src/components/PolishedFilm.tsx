@@ -402,18 +402,18 @@ export default function PolishedFilm() {
           <Scene />
         </Canvas>
 
-        {/* Soft grain + warm corners */}
+        {/* Soft warm corners — subtle, never darkens scene */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse at center, transparent 55%, rgba(200,140,160,0.18) 100%)",
+              "radial-gradient(ellipse at center, transparent 70%, rgba(232,200,144,0.10) 100%)",
           }}
         />
-        {/* End fade */}
+        {/* End fade — pastel, gentle */}
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-700"
-          style={{ opacity: endOn * 0.7, background: "linear-gradient(180deg,#fbf3e6,#f7c8d4)" }}
+          style={{ opacity: endOn * 0.45, background: "linear-gradient(180deg,#fbf3e6,#f9d9e0)" }}
         />
       </div>
 
