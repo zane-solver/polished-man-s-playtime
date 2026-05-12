@@ -461,13 +461,16 @@ export default function PolishedFilm() {
           </p>
         </div>
 
-        {/* Section 1 — Intro */}
+        {/* Decorative drifting shapes (always-on subtle layer) */}
+        <FloatingDecor />
+
+        {/* SECTION 1 — Cinematic intro headline (also handled by overlay) */}
         <div
-          className="absolute inset-x-0 top-[6%] flex flex-col items-center text-center transition-opacity duration-1000"
+          className="absolute inset-x-0 top-[8%] flex flex-col items-center text-center transition-opacity duration-1000"
           style={{ opacity: fadeIntro }}
         >
           <p
-            className="text-[7rem] md:text-[9rem] leading-none font-light"
+            className="text-[6rem] md:text-[8rem] leading-none font-light"
             style={{
               fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
               color: "transparent",
@@ -489,78 +492,198 @@ export default function PolishedFilm() {
           </div>
         </div>
 
-        {/* Section 2 — Hero */}
+        {/* SECTION 2 — Hero + interactive Material/Mood buttons */}
         <div
-          className="absolute bottom-24 left-0 right-0 flex flex-col items-center transition-opacity duration-700"
-          style={{ opacity: heroOn }}
+          className="absolute inset-x-0 top-[10%] flex flex-col items-center text-center transition-opacity duration-700"
+          style={{ opacity: s[1] }}
         >
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
-            meet the polished one
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+            polish · atelier
           </p>
-          <p
-            className="mt-3 text-3xl md:text-5xl font-light tracking-[0.3em]"
+          <h1
+            className="mt-3 text-2xl md:text-4xl font-light tracking-[0.18em] max-w-2xl"
             style={{
+              fontFamily: "'Cormorant Garamond', serif",
               color: "transparent",
               backgroundImage: "linear-gradient(120deg,#a36b80,#e8c890,#a36b80)",
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
-              fontFamily: "'Cormorant Garamond', serif",
             }}
           >
-            A QUIET COMPANION
+            A creative studio crafting immersive 3D experiences
+          </h1>
+          <p className="mt-4 text-xs md:text-sm tracking-[0.35em]" style={{ color: "#a98598" }}>
+            refined &nbsp;·&nbsp; cinematic &nbsp;·&nbsp; interactive
           </p>
-          {/* Floating side panels */}
-          <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 flex-col gap-4 pl-12">
-            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
-              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Material</p>
-              <p className="text-sm" style={{ color: "#5a3b48" }}>Hand-poured glass</p>
-            </div>
-            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
-              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Finish</p>
-              <p className="text-sm" style={{ color: "#5a3b48" }}>Polished rose gold</p>
-            </div>
-          </div>
-          <div className="hidden md:flex absolute -right-2 top-1/2 -translate-y-1/2 flex-col gap-4 pr-12 items-end">
-            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
-              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Mood</p>
-              <p className="text-sm" style={{ color: "#5a3b48" }}>Soft &amp; luminous</p>
-            </div>
-            <div className="px-4 py-3 rounded-xl backdrop-blur-md border" style={{ background: "rgba(255,255,255,0.35)", borderColor: "rgba(200,140,160,0.35)" }}>
-              <p className="text-[9px] uppercase tracking-[0.4em]" style={{ color: "#8a6677" }}>Origin</p>
-              <p className="text-sm" style={{ color: "#5a3b48" }}>Atelier No. 5</p>
-            </div>
-          </div>
         </div>
-
-        {/* Section 3 — Interactive moods */}
         <div
-          className={`absolute bottom-20 left-0 right-0 flex flex-col items-center gap-6 transition-opacity duration-700 ${
-            interactVisible ? "opacity-100 pointer-events-auto" : "opacity-0"
-          }`}
+          className="absolute inset-x-0 bottom-[12%] flex flex-col items-center gap-5 transition-opacity duration-700 pointer-events-auto"
+          style={{ opacity: s[1] }}
         >
-          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
-            press a feeling
-          </p>
-          <div className="flex items-center gap-8">
+          <p className="text-[10px] uppercase tracking-[0.5em]" style={{ color: "#8a6677" }}>materials</p>
+          <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
+            {[
+              { l: "glass", c: "#cfe1f0", a: "#6f8aa3" },
+              { l: "rose gold", c: "#f7c8d4", a: "#a36b80" },
+              { l: "ivory", c: "#fbf3e6", a: "#b8a07a" },
+              { l: "pearl", c: "#ffffff", a: "#a98598" },
+            ].map((m) => (
+              <ChipButton key={m.l} color={m.c} accent={m.a} label={m.l} onClick={() => { scroll.pulse = 1; }} />
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#8a6677" }}>moods</p>
+          <div className="flex items-center gap-6">
             <MoodButton color={PALETTE.rose} accent="#a36b80" label="tenderness" onClick={() => setMood("rose")} />
             <MoodButton color={PALETTE.gold} accent="#a07a3c" label="warmth" onClick={() => setMood("gold")} />
             <MoodButton color={PALETTE.sky} accent="#6f8aa3" label="serenity" onClick={() => setMood("sky")} />
           </div>
-          <p className="text-[10px] tracking-[0.4em]" style={{ color: "#a98598" }}>
-            the room responds
+        </div>
+
+        {/* SECTION 3 — Feature close-up 1 */}
+        <SidePanel side="left" opacity={s[2]} eyebrow="03 · craft">
+          <p
+            className="text-2xl md:text-3xl font-light leading-snug"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            We craft interactive 3D experiences for{" "}
+            <em style={{ color: "#a36b80" }}>luxury</em>,{" "}
+            <em style={{ color: "#a07a3c" }}>automotive</em> and{" "}
+            <em style={{ color: "#6f8aa3" }}>energy</em> brands.
+          </p>
+          <p className="mt-4 text-xs tracking-[0.3em] uppercase" style={{ color: "#a98598" }}>
+            real-time · webgl · cinematic
+          </p>
+        </SidePanel>
+
+        {/* SECTION 4 — Feature close-up 2 */}
+        <SidePanel side="right" opacity={s[3]} eyebrow="04 · patience">
+          <p
+            className="text-2xl md:text-3xl font-light leading-snug"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            Every project is refined with patience, cinematic storytelling, and visual polish.
+          </p>
+          <div className="mt-5 grid grid-cols-3 gap-3 text-[10px] uppercase tracking-[0.3em]" style={{ color: "#8a6677" }}>
+            <div><span style={{ color: "#a36b80" }}>·</span> direction</div>
+            <div><span style={{ color: "#a07a3c" }}>·</span> motion</div>
+            <div><span style={{ color: "#6f8aa3" }}>·</span> code</div>
+          </div>
+        </SidePanel>
+
+        {/* SECTION 5 — Narrative / philosophy */}
+        <div
+          className="absolute inset-x-0 top-[14%] flex flex-col items-center text-center px-6 transition-opacity duration-700"
+          style={{ opacity: s[4] }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>05 · philosophy</p>
+          <p
+            className="mt-6 max-w-2xl text-xl md:text-2xl font-light leading-relaxed"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            We believe a brand should breathe — not shout. Each frame is a brushstroke,
+            each interaction a small act of attention.
           </p>
         </div>
 
-        {/* Section 4 — Signature */}
+        {/* SECTION 6 — Movement / interaction cues */}
+        <div
+          className="absolute inset-x-0 bottom-[14%] flex flex-col items-center text-center transition-opacity duration-700 pointer-events-auto"
+          style={{ opacity: s[5] }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>06 · movement</p>
+          <p
+            className="mt-3 text-xl md:text-2xl font-light tracking-[0.12em]"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            hover · scroll · breathe
+          </p>
+          <button
+            onClick={() => { scroll.pulse = 1; setMood("rose"); }}
+            onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.5); }}
+            className="mt-6 px-6 py-3 rounded-full text-[10px] uppercase tracking-[0.5em] backdrop-blur-md border transition-all hover:scale-105"
+            style={{
+              background: "rgba(255,255,255,0.4)",
+              borderColor: "rgba(200,140,160,0.4)",
+              color: "#5a3b48",
+              boxShadow: "0 8px 30px rgba(247,200,212,0.35)",
+            }}
+          >
+            touch the bloom
+          </button>
+        </div>
+
+        {/* SECTION 7 — Pre-climax / build-up */}
+        <div
+          className="absolute inset-x-0 top-[18%] flex flex-col items-center text-center transition-opacity duration-700"
+          style={{ opacity: s[6] }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>07 · build-up</p>
+          <p
+            className="mt-4 text-3xl md:text-5xl font-extralight tracking-[0.2em]"
+            style={{
+              fontFamily: "'Cormorant Garamond', serif",
+              color: "transparent",
+              backgroundImage: "linear-gradient(120deg,#a36b80,#e8c890)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+            }}
+          >
+            light gathers
+          </p>
+        </div>
+        <div
+          className="pointer-events-none absolute inset-0 transition-opacity duration-700"
+          style={{
+            opacity: s[6] * 0.55,
+            background:
+              "radial-gradient(ellipse at 50% 50%, rgba(247,200,212,0.45) 0%, transparent 55%)",
+          }}
+        />
+
+        {/* SECTION 8 — Cinematic transition / pastel beams */}
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-700"
+          style={{ opacity: s[7] }}
+        >
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="absolute top-[-30%] left-1/2 origin-top"
+              style={{
+                width: 220,
+                height: "160%",
+                transform: `translateX(-50%) rotate(${(i - 2) * 9}deg)`,
+                background:
+                  "linear-gradient(180deg, rgba(255,236,224,0.55), rgba(247,200,212,0.0) 70%)",
+                filter: "blur(28px)",
+                opacity: 0.55,
+              }}
+            />
+          ))}
+        </div>
+        <div
+          className="absolute inset-x-0 top-[12%] text-center transition-opacity duration-700"
+          style={{ opacity: s[7] }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>08 · transition</p>
+          <p
+            className="mt-3 text-xl md:text-2xl font-light italic"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            a slow inhale before the bloom
+          </p>
+        </div>
+
+        {/* SECTION 9 — Signature climax */}
         <div
           className="absolute top-1/2 left-0 right-0 -translate-y-1/2 text-center transition-opacity duration-700"
-          style={{ opacity: sigOn }}
+          style={{ opacity: s[8] }}
         >
           <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
-            from a whisper to a bloom
+            09 · the polished man
           </p>
           <p
-            className="mt-6 text-3xl md:text-5xl font-light tracking-[0.4em]"
+            className="mt-6 text-4xl md:text-6xl font-light tracking-[0.4em]"
             style={{
               fontFamily: "'Cormorant Garamond', serif",
               color: "transparent",
@@ -569,19 +692,34 @@ export default function PolishedFilm() {
               backgroundClip: "text",
             }}
           >
-            POLISH&nbsp;&nbsp;ATELIER
+            磨 → POLISH
           </p>
           <p className="mt-4 text-xs tracking-[0.45em]" style={{ color: "#a98598" }}>
-            est. five years &nbsp;·&nbsp; crafted in light
+            five years &nbsp;·&nbsp; crafted in light
           </p>
         </div>
 
-        {/* Section 5 — Ending */}
+        {/* SECTION 10 — Emotional afterglow */}
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-1000"
-          style={{ opacity: endOn }}
+          className="absolute inset-x-0 bottom-[16%] text-center px-6 transition-opacity duration-700"
+          style={{ opacity: s[9] }}
         >
-          <p className="text-xs uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>10 · afterglow</p>
+          <p
+            className="mt-4 max-w-xl mx-auto text-lg md:text-xl font-light italic leading-relaxed"
+            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#5a3b48" }}
+          >
+            What lingers is not the spectacle — it is the warmth that stays
+            when the screen quiets.
+          </p>
+        </div>
+
+        {/* SECTION 11 — Footer */}
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-1000 pointer-events-auto"
+          style={{ opacity: Math.max(s[10], endOn) }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#8a6677" }}>
             crafted with patience
           </p>
           <p
@@ -590,13 +728,19 @@ export default function PolishedFilm() {
           >
             until next bloom
           </p>
-          <div className="mt-10 flex items-center gap-6 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#a98598" }}>
-            <span>instagram</span>
+          <p className="mt-3 text-[10px] tracking-[0.4em] uppercase" style={{ color: "#a98598" }}>
+            hello@polish.atelier
+          </p>
+          <div className="mt-8 flex items-center gap-6 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#a98598" }}>
+            <a className="transition-colors hover:text-[#a36b80]" href="#">instagram</a>
             <span className="h-px w-8" style={{ background: "currentColor" }} />
-            <span>journal</span>
+            <a className="transition-colors hover:text-[#a36b80]" href="#">journal</a>
             <span className="h-px w-8" style={{ background: "currentColor" }} />
-            <span>contact</span>
+            <a className="transition-colors hover:text-[#a36b80]" href="#">contact</a>
           </div>
+          <p className="mt-10 text-[9px] tracking-[0.4em] uppercase" style={{ color: "#c8a3b6" }}>
+            © polish atelier — mmxxv
+          </p>
         </div>
 
         {/* Vertical scroll rail */}
@@ -612,8 +756,8 @@ export default function PolishedFilm() {
         </div>
       </div>
 
-      {/* Scroll spacer */}
-      <div className="relative z-0" style={{ height: "650vh" }} />
+      {/* Scroll spacer — 11 chapters */}
+      <div className="relative z-0" style={{ height: "1180vh" }} />
 
       {/* Cinematic intro overlay */}
       <IntroOverlay phase={introPhase} onSkip={() => setIntroPhase(3)} />
