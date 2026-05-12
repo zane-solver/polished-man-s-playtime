@@ -177,21 +177,22 @@ function CameraRig() {
   useFrame(() => {
     const p = scroll.p;
     let pos = new THREE.Vector3();
+    // Keep mascot always framed — gentle dolly only.
     if (p < 0.2) {
       const k = p / 0.2;
-      pos.set(0.2, 0.3, 6.5 - k * 1.2);
+      pos.set(0.1, 0.3, 6.2 - k * 0.7);
     } else if (p < 0.45) {
       const k = (p - 0.2) / 0.25;
-      const a = k * Math.PI * 0.5 - 0.25;
-      pos.set(Math.sin(a) * 4.0, 0.3, Math.cos(a) * 4.0);
+      const a = k * Math.PI * 0.35 - 0.15;
+      pos.set(Math.sin(a) * 2.4, 0.25, Math.cos(a) * 2.4 + 2.6);
     } else if (p < 0.65) {
-      pos.set(0, 0.2, 5.0);
+      pos.set(0, 0.2, 4.8);
     } else if (p < 0.88) {
       const k = (p - 0.65) / 0.23;
-      pos.set(0, 0.1, 5.5 + k * 1.2);
+      pos.set(0, 0.15, 4.8 + k * 0.4);
     } else {
       const k = (p - 0.88) / 0.12;
-      pos.set(0, -0.1 + k * 0.05, 7.0 + k * 0.6);
+      pos.set(0, 0.1, 5.2 + k * 0.3);
     }
     pos.x += mouse.x * 0.18;
     pos.y += mouse.y * 0.12;
@@ -338,9 +339,9 @@ function Scene() {
       <Sparkles count={70} scale={[10, 6, 6]} size={2} speed={0.18} color={PALETTE.gold} opacity={0.55} />
       <Sparkles count={40} scale={[14, 8, 8]} size={1.2} speed={0.1} color={PALETTE.rose} opacity={0.4} />
       <EffectComposer>
-        <Bloom intensity={0.65} luminanceThreshold={0.55} luminanceSmoothing={0.5} mipmapBlur />
-        <ChromaticAberration offset={new THREE.Vector2(0.0006, 0.0006)} radialModulation={false} modulationOffset={0} />
-        <Vignette eskil={false} offset={0.25} darkness={0.55} />
+        <Bloom intensity={0.55} luminanceThreshold={0.6} luminanceSmoothing={0.5} mipmapBlur />
+        <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
+        <Vignette eskil={false} offset={0.5} darkness={0.18} />
       </EffectComposer>
     </>
   );
