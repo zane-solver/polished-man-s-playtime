@@ -939,3 +939,106 @@ function MoodButton({
     </button>
   );
 }
+
+function ChipButton({ color, accent, label, onClick }: { color: string; accent: string; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.3); }}
+      className="group relative px-5 py-2 rounded-full text-[10px] uppercase tracking-[0.4em] backdrop-blur-md border transition-all hover:scale-105"
+      style={{
+        background: "rgba(255,255,255,0.4)",
+        borderColor: `${accent}55`,
+        color: "#5a3b48",
+        boxShadow: `0 6px 22px ${color}55`,
+      }}
+    >
+      <span
+        className="absolute -inset-1 rounded-full opacity-0 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${color} 0%, transparent 70%)`, filter: "blur(10px)" }}
+      />
+      <span className="relative">{label}</span>
+    </button>
+  );
+}
+
+function SidePanel({
+  side,
+  opacity,
+  eyebrow,
+  children,
+}: {
+  side: "left" | "right";
+  opacity: number;
+  eyebrow: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`absolute top-1/2 -translate-y-1/2 max-w-md px-6 transition-opacity duration-700 ${
+        side === "left" ? "left-4 md:left-16 text-left" : "right-4 md:right-16 text-right"
+      }`}
+      style={{ opacity }}
+    >
+      <div
+        className="p-6 rounded-2xl backdrop-blur-md border"
+        style={{
+          background: "rgba(255,255,255,0.38)",
+          borderColor: "rgba(200,140,160,0.35)",
+          boxShadow: "0 20px 60px rgba(200,140,160,0.18)",
+        }}
+      >
+        <p className="text-[10px] uppercase tracking-[0.5em] mb-3" style={{ color: "#8a6677" }}>{eyebrow}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FloatingDecor() {
+  // Soft drifting blobs + light streaks for ambient depth across all sections.
+  const blobs = [
+    { c: "#f7c8d4", x: "12%", y: "22%", s: 220, d: "0s",   dur: "11s" },
+    { c: "#e8c890", x: "82%", y: "18%", s: 180, d: "1.6s", dur: "13s" },
+    { c: "#cfe1f0", x: "78%", y: "72%", s: 240, d: "0.8s", dur: "12s" },
+    { c: "#f9d9e0", x: "18%", y: "78%", s: 200, d: "2.2s", dur: "14s" },
+  ];
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {blobs.map((b, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full blur-3xl decor-float"
+          style={{
+            width: b.s, height: b.s, left: b.x, top: b.y,
+            background: `radial-gradient(circle, ${b.c} 0%, transparent 70%)`,
+            opacity: 0.35,
+            animationDelay: b.d,
+            animationDuration: b.dur,
+          }}
+        />
+      ))}
+      {/* light streaks */}
+      {[15, 38, 62, 84].map((x, i) => (
+        <div
+          key={`s-${i}`}
+          className="absolute top-0 h-full"
+          style={{
+            left: `${x}%`,
+            width: 1,
+            background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.35), transparent)",
+            opacity: 0.5,
+            transform: `translateY(${i % 2 ? -10 : 10}%)`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes decorFloat {
+          0%,100% { transform: translate(0,0) scale(1); }
+          50% { transform: translate(12px,-14px) scale(1.06); }
+        }
+        .decor-float { animation-name: decorFloat; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+      `}</style>
+    </div>
+  );
+}
