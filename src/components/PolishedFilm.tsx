@@ -365,7 +365,7 @@ export default function PolishedFilm() {
     setMounted(true);
     const onScroll = () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
-      scroll.p = Math.min(1, Math.max(0, window.scrollY / h));
+      scroll.p = h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)) : 0;
       setInteractVisible(scroll.p > 0.4 && scroll.p < 0.62);
       force((n) => n + 1);
     };
