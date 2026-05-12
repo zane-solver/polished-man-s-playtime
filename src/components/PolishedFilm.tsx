@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, Float, Sparkles, ContactShadows, MeshTransmissionMaterial } from "@react-three/drei";
+import { Environment, Float, Sparkles, ContactShadows } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -64,28 +64,34 @@ function MascotPlaceholder() {
   });
 
   return (
-    <group ref={group} scale={1.35}>
+    <group ref={group} scale={1.9}>
       {/* Outer glow halo */}
       <mesh ref={halo} position={[0, 0.1, -0.4]}>
         <ringGeometry args={[1.2, 1.9, 64]} />
         <meshBasicMaterial color={PALETTE.rose} transparent opacity={0.35} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* Soft glass capsule body — placeholder silhouette */}
+      {/* Soft polished capsule body — intentionally visible placeholder silhouette */}
       <Float speed={1.2} rotationIntensity={0.15} floatIntensity={0.4}>
         <mesh position={[0, -0.1, 0]}>
           <capsuleGeometry args={[0.62, 0.9, 24, 48]} />
-          <MeshTransmissionMaterial
-            thickness={0.8}
-            roughness={0.05}
-            transmission={1}
-            ior={1.4}
-            chromaticAberration={0.04}
-            backside
-            color={PALETTE.pearl}
-            attenuationColor={PALETTE.rose}
-            attenuationDistance={2}
+          <meshPhysicalMaterial
+            color={PALETTE.blush}
+            emissive={PALETTE.rose}
+            emissiveIntensity={0.22}
+            roughness={0.18}
+            metalness={0.18}
+            clearcoat={1}
+            clearcoatRoughness={0.08}
+            transparent
+            opacity={0.84}
           />
+        </mesh>
+
+        {/* Readable rose-gold rim so the mascot never disappears on light or dark chapters */}
+        <mesh position={[0, -0.1, -0.03]} scale={1.04}>
+          <capsuleGeometry args={[0.62, 0.9, 24, 48]} />
+          <meshBasicMaterial color={PALETTE.gold} transparent opacity={0.22} side={THREE.BackSide} />
         </mesh>
 
         {/* Inner glowing core */}
@@ -359,7 +365,7 @@ export default function PolishedFilm() {
     setMounted(true);
     const onScroll = () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
-      scroll.p = Math.min(1, Math.max(0, window.scrollY / h));
+      scroll.p = h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)) : 0;
       setInteractVisible(scroll.p > 0.4 && scroll.p < 0.62);
       force((n) => n + 1);
     };
