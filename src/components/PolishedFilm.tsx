@@ -353,7 +353,7 @@ function MoodLights() {
 
 /* ---------------- Signature petals ---------------- */
 function Petals() {
-  const COUNT = 1200;
+  const COUNT = import.meta.env.DEV ? 300 : 1200;
   const ref = useRef<THREE.Points>(null!);
   const mat = useRef<THREE.PointsMaterial>(null!);
   const { origins, targets } = useMemo(() => {
@@ -436,29 +436,33 @@ function Scene({ onImpact }: { onImpact?: () => void }) {
     <>
       {/* Dark fog matches the obsidian backdrop — object pops cleanly */}
       <fog attach="fog" args={["#070810", 10, 28]} />
-      <Backdrop />
+      {import.meta.env.DEV ? null : <Backdrop />}
       <CameraRig />
       <MoodLights />
       <Suspense fallback={<MascotPlaceholder />}>
         <BuiltObject onImpact={onImpact} />
         <Environment preset="apartment" environmentIntensity={0.5} />
       </Suspense>
-      <ContactShadows
-        position={[0, -0.95, 0]}
-        opacity={0.65}
-        scale={6}
-        blur={3.2}
-        far={2.5}
-        color="#000820"
-      />
+      {import.meta.env.DEV ? null : (
+        <ContactShadows
+          position={[0, -0.95, 0]}
+          opacity={0.65}
+          scale={6}
+          blur={3.2}
+          far={2.5}
+          color="#000820"
+        />
+      )}
       <Petals />
-      <Sparkles count={70} scale={[10, 6, 6]} size={2}   speed={0.18} color={PALETTE.gold} opacity={0.55} />
-      <Sparkles count={40} scale={[14, 8, 8]} size={1.2} speed={0.10} color={PALETTE.rose} opacity={0.40} />
-      <EffectComposer>
-        <Bloom intensity={0.70} luminanceThreshold={0.50} luminanceSmoothing={0.5} mipmapBlur />
-        <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
-        <Vignette eskil={false} offset={0.42} darkness={0.60} />
-      </EffectComposer>
+      <Sparkles count={import.meta.env.DEV ? 35 : 70} scale={[10, 6, 6]} size={2}   speed={0.18} color={PALETTE.gold} opacity={0.55} />
+      <Sparkles count={import.meta.env.DEV ? 20 : 40} scale={[14, 8, 8]} size={1.2} speed={0.10} color={PALETTE.rose} opacity={0.40} />
+      {import.meta.env.DEV ? null : (
+        <EffectComposer>
+          <Bloom intensity={0.70} luminanceThreshold={0.50} luminanceSmoothing={0.5} mipmapBlur />
+          <ChromaticAberration offset={new THREE.Vector2(0.0005, 0.0005)} radialModulation={false} modulationOffset={0} />
+          <Vignette eskil={false} offset={0.42} darkness={0.60} />
+        </EffectComposer>
+      )}
     </>
   );
 }
