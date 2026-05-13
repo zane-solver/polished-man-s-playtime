@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Environment, Float, Sparkles, ContactShadows } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { gsap } from "gsap";
 import * as THREE from "three";
 // @ts-ignore
@@ -32,6 +32,9 @@ const PALETTE = {
   ivory: "#EDE8D8",   // warm ivory (ambient / fill light & primary text)
   pearl: "#D8D4E8",   // cool pearl (key directional light)
 };
+
+const builtObjectUrl = "/assets/polished-man-5th.glb";
+const dracoDecoderPath = "/draco/gltf/";
 
 /* ---------------- Placeholder mascot — luminous silhouette ---------------- */
 function MascotPlaceholder() {
@@ -124,15 +127,12 @@ function MascotPlaceholder() {
   );
 }
 
-const builtObjectUrl = new URL("../../磨人設計-5th.glb", import.meta.url).href;
-
-function BuiltObject() {
+function BuiltObject({ onImpact }: { onImpact?: () => void }) {
   const { mouse } = useThree();
 
   const dracoLoader = useMemo(() => {
     const loader = new DRACOLoader();
-    loader.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/");
-    loader.setDecoderConfig({ type: "js" });
+    loader.setDecoderPath(dracoDecoderPath);
     return loader;
   }, []);
 
@@ -142,93 +142,88 @@ function BuiltObject() {
 
   const [hovered, setHovered] = useState(false);
   const [clicked, setClicked] = useState(false);
-  /** true while mouse button is held down on the object */
-  const [isMouseControlled, setIsMouseControlled] = useState(false);
-  const [isPageScrolling, setIsPageScrolling] = useState(false);
-  const wheelDelta = useRef(0);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const group = useRef<THREE.Group>(null!);
+  const wheelDelta = useRef(0);
 
   const gltf = useLoader(GLTFLoader, builtObjectUrl, (loader) => loader.setDRACOLoader(dracoLoader));
-  const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
+  const scene = useMemo(() => {
+    const cloned = gltf.scene.clone(true);
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+
+    cloned.position.sub(center);
+    cloned.scale.setScalar(3.15 / maxAxis);
+    cloned.traverse((object) => {
+      if ((object as THREE.Mesh).isMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+
+    return cloned;
+  }, [gltf.scene]);
 
   useFrame((state) => {
-    const t = state.clock.elapsedTime;
     if (!group.current) return;
 
-    const targetScale = clicked ? 23 : hovered ? 21 : 19;
+    const t = state.clock.elapsedTime;
+    const targetScale = clicked ? 1.24 : hovered ? 1.14 : 1;
     group.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
 
-    if (isMouseControlled) {
-      // Map normalised mouse position (-1…1) directly to rotation axes
-      const targetY = mouse.x * 1.5;
-      const targetX = -mouse.y * 0.8;
-      group.current.rotation.y += (targetY - group.current.rotation.y) * 0.08;
-      group.current.rotation.x += (targetX - group.current.rotation.x) * 0.08;
-    } else {
-      // Default: continuous turntable spin on Y, gentle X bob
-      const baseWheelRotation = 0.035;
-      const wheelRotation = wheelDelta.current * 0.18;
-      group.current.rotation.y += baseWheelRotation + wheelRotation;
-      const targetRotX = Math.sin(t * 0.4) * 0.05 + (hovered ? 0.05 : 0);
-      group.current.rotation.x += (targetRotX - group.current.rotation.x) * 0.08;
-    }
-
-    group.current.position.y = -0.2 + Math.sin(t * 0.45) * 0.04 + (clicked ? 0.08 : 0);
-
-    if (wheelDelta.current !== 0) {
-      wheelDelta.current *= 0.85;
-    }
+    const targetY = isDragging ? mouse.x * 0.9 : group.current.rotation.y + 0.012 + wheelDelta.current * 0.12;
+    const targetX = isDragging ? -mouse.y * 0.35 : Math.sin(t * 0.5) * 0.05;
+    group.current.rotation.y += (targetY - group.current.rotation.y) * 0.08;
+    group.current.rotation.x += (targetX - group.current.rotation.x) * 0.08;
+    group.current.position.y = -0.08 + Math.sin(t * 0.55) * 0.045 + (clicked ? 0.05 : 0);
+    wheelDelta.current *= 0.86;
+    scroll.pulse *= 0.96;
   });
+
+  const triggerImpact = () => {
+    if (onImpact) onImpact();
+  };
 
   const handlePointerDown = (event: any) => {
     event.stopPropagation();
-    setIsMouseControlled(true);
+    setIsDragging(true);
     setClicked(true);
     scroll.pulse = 1;
-    setTimeout(() => setClicked(false), 280);
+    setTimeout(() => setClicked(false), 220);
   };
+
+  useEffect(() => {
+    const handlePointerUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        triggerImpact();
+      }
+    };
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, [isDragging]);
 
   const handleWheel = (event: any) => {
     event.stopPropagation();
     event.preventDefault();
-    wheelDelta.current = Math.max(-1, Math.min(1, wheelDelta.current + event.deltaY * -0.0015));
+    wheelDelta.current = Math.max(-1.4, Math.min(1.4, wheelDelta.current + event.deltaY * -0.0014));
+    scroll.pulse = 1;
   };
 
-  // Listen for global pointerup to exit mouse-control mode even if cursor left the canvas
-  useEffect(() => {
-    if (!isMouseControlled) return;
-    const handlePointerUp = () => setIsMouseControlled(false);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => window.removeEventListener("pointerup", handlePointerUp);
-  }, [isMouseControlled]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handlePageScroll = () => {
-      setIsPageScrolling(true);
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-      scrollTimeoutRef.current = setTimeout(() => setIsPageScrolling(false), 200);
-    };
-    window.addEventListener("scroll", handlePageScroll, true);
-    return () => window.removeEventListener("scroll", handlePageScroll, true);
-  }, []);
-
   return (
-    <Float speed={0.9} rotationIntensity={0.18} floatIntensity={0.35}>
+    <Float speed={0.9} rotationIntensity={0.08} floatIntensity={0.22}>
       <group
         ref={group}
-        position={[0, -0.2, 0]}
-        rotation={[0, Math.PI * 0.12, 0]}
         scale={1}
+        rotation={[0, Math.PI * 0.12, 0]}
         onPointerOver={(event) => {
           event.stopPropagation();
-          if (!isPageScrolling) { setHovered(true); scroll.pulse = 1; }
+          setHovered(true);
+          scroll.pulse = 1;
         }}
         onPointerOut={(event) => { event.stopPropagation(); setHovered(false); }}
         onPointerDown={handlePointerDown}
@@ -436,7 +431,7 @@ function Petals() {
 }
 
 /* ---------------- Scene ---------------- */
-function Scene() {
+function Scene({ onImpact }: { onImpact?: () => void }) {
   return (
     <>
       {/* Dark fog matches the obsidian backdrop — object pops cleanly */}
@@ -445,7 +440,7 @@ function Scene() {
       <CameraRig />
       <MoodLights />
       <Suspense fallback={<MascotPlaceholder />}>
-        <BuiltObject />
+        <BuiltObject onImpact={onImpact} />
         <Environment preset="apartment" environmentIntensity={0.5} />
       </Suspense>
       <ContactShadows
@@ -523,7 +518,7 @@ function CursorGlow() {
         style={{
           width: 480, height: 480,
           marginLeft: -240, marginTop: -240,
-          background: "radial-gradient(circle, rgba(77,136,255,0.055) 0%, rgba(200,169,106,0.020) 50%, transparent 70%)",
+          background: "radial-gradient(circle, rgba(237,232,216,0.12) 0%, rgba(200,169,106,0.10) 34%, transparent 70%)",
           left: 0, top: 0,
         }}
       />
@@ -536,8 +531,11 @@ function CursorGlow() {
           height:     pressing ? 26 : 38,
           marginLeft: pressing ? -13 : -19,
           marginTop:  pressing ? -13 : -19,
-          border:     `1.5px solid ${pressing ? "rgba(200,169,106,0.88)" : "rgba(200,169,106,0.42)"}`,
-          transition: "width 0.18s, height 0.18s, margin 0.18s, border-color 0.18s",
+          border:     `2px solid ${pressing ? "rgba(237,232,216,0.98)" : "rgba(200,169,106,0.94)"}`,
+          boxShadow:  pressing
+            ? "0 0 0 1px rgba(15,12,6,0.78), 0 0 18px rgba(237,232,216,0.52)"
+            : "0 0 0 1px rgba(15,12,6,0.72), 0 0 16px rgba(200,169,106,0.46)",
+          transition: "width 0.18s, height 0.18s, margin 0.18s, border-color 0.18s, box-shadow 0.18s",
           left: 0, top: 0,
         }}
       />
@@ -546,12 +544,13 @@ function CursorGlow() {
         ref={dotRef}
         className="absolute rounded-full"
         style={{
-          width: 6, height: 6,
-          marginLeft: -3, marginTop: -3,
-          background: PALETTE.gold,
-          boxShadow: `0 0 10px ${PALETTE.gold}, 0 0 24px rgba(200,169,106,0.38)`,
-          transform: pressing ? "scale(0.55)" : "scale(1)",
-          transition: "transform 0.15s",
+          width: pressing ? 5 : 8,
+          height: pressing ? 5 : 8,
+          marginLeft: pressing ? -2.5 : -4,
+          marginTop: pressing ? -2.5 : -4,
+          background: pressing ? "#EDE8D8" : PALETTE.gold,
+          boxShadow: "0 0 0 1px rgba(7,8,16,0.92), 0 0 12px rgba(237,232,216,0.86), 0 0 26px rgba(200,169,106,0.70)",
+          transition: "width 0.15s, height 0.15s, margin 0.15s, background 0.15s",
           left: 0, top: 0,
         }}
       />
@@ -662,6 +661,37 @@ function MoodReveal({ mood }: { mood: "idle" | "rose" | "gold" | "sky" }) {
   );
 }
 
+class SceneErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("3D scene failed to render", error);
+  }
+
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
+
+function SceneFallback() {
+  return (
+    <div
+      className="absolute inset-0"
+      style={{
+        background:
+          "radial-gradient(ellipse at 50% 40%, rgba(77,136,255,0.12), transparent 48%), #070810",
+      }}
+    />
+  );
+}
+
 /* ---------------- HUD ---------------- */
 export default function PolishedFilm() {
   const [mounted, setMounted]             = useState(false);
@@ -669,6 +699,8 @@ export default function PolishedFilm() {
   const [interactVisible, setInteractVisible] = useState(false);
   const [introPhase, setIntroPhase]       = useState<0 | 1 | 2 | 3>(0);
   const [activeMood, setActiveMood]       = useState<"idle" | "rose" | "gold" | "sky">("idle");
+  const [impactActive, setImpactActive]   = useState(false);
+  const impactTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -686,6 +718,7 @@ export default function PolishedFilm() {
     return () => {
       window.removeEventListener("scroll", onScroll);
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      if (impactTimeoutRef.current) clearTimeout(impactTimeoutRef.current);
     };
   }, []);
 
@@ -698,11 +731,17 @@ export default function PolishedFilm() {
     }, 2800);
   };
 
+  const triggerImpact = () => {
+    setImpactActive(true);
+    if (impactTimeoutRef.current) clearTimeout(impactTimeoutRef.current);
+    impactTimeoutRef.current = setTimeout(() => setImpactActive(false), 420);
+  };
+
   if (!mounted) return <div className="fixed inset-0" style={{ background: PALETTE.deepObsidian }} />;
 
   const p = scroll.p;
   const seg = (i: number) => [i / 11, (i + 1) / 11] as const;
-  const win = (start: number, end: number, fade = 0.025) => {
+  const win = (start: number, end: number, fade = 0.008) => {
     if (p < start - fade || p > end + fade) return 0;
     if (p < start) return (p - (start - fade)) / fade;
     if (p > end)   return 1 - (p - end) / fade;
@@ -718,18 +757,35 @@ export default function PolishedFilm() {
   // Exclusive opacity windows — Section 1 fully fades out before Section 2 appears
   const fadeIntro = p < 0.075 ? 1 : p < 0.092 ? (0.092 - p) / 0.017 : 0;
   const heroSec   = p < 0.092 ? 0 : s[1];
+  const hudLabelStyle: CSSProperties = {
+    color: "#F6F1DF",
+    fontWeight: 600,
+    textShadow: "0 0 14px rgba(237,232,216,0.58), 0 1px 5px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,0.95)",
+  };
+  const hudMetaStyle: CSSProperties = {
+    color: "#EDE8D8",
+    fontWeight: 600,
+    textShadow: "0 0 12px rgba(237,232,216,0.50), 0 1px 5px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.90)",
+  };
+  const chapterStyle = (opacity: number, extra?: CSSProperties): CSSProperties => ({
+    opacity,
+    visibility: opacity > 0.02 ? "visible" : "hidden",
+    ...extra,
+  });
 
   return (
     <>
       {/* ── Cinematic canvas — dark obsidian base so 3D object pops ── */}
       <div className="fixed inset-0 z-0" style={{ background: PALETTE.deepObsidian }}>
-        <Canvas
-          dpr={[1, 1.75]}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-          camera={{ position: [0, 0.3, 6.5], fov: 38 }}
-        >
-          <Scene />
-        </Canvas>
+        <SceneErrorBoundary fallback={<SceneFallback />}>
+          <Canvas
+            dpr={[1, 1.75]}
+            gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+            camera={{ position: [0, 0.3, 6.5], fov: 38 }}
+          >
+            <Scene onImpact={triggerImpact} />
+          </Canvas>
+        </SceneErrorBoundary>
 
         {/* Dark vignette corners — adds cinematic depth */}
         <div
@@ -758,12 +814,12 @@ export default function PolishedFilm() {
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: PALETTE.gold, boxShadow: `0 0 8px ${PALETTE.gold}` }}
           />
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={{ color: "#9094A8" }}>
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={hudLabelStyle}>
             Polish · Atelier
           </p>
         </div>
         <div className="absolute top-6 right-6 md:top-9 md:right-12 text-right">
-          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={{ color: "#9094A8" }}>
+          <p className="text-[10px] md:text-xs uppercase tracking-[0.55em]" style={hudLabelStyle}>
             Chapter&nbsp;&nbsp;{chapter}&nbsp;·&nbsp;Five Years of Patience
           </p>
         </div>
@@ -779,10 +835,10 @@ export default function PolishedFilm() {
 
         {/* Bottom-left meta */}
         <div className="absolute bottom-6 left-6 md:bottom-9 md:left-12 max-w-[220px]">
-          <p className="text-[10px] uppercase tracking-[0.5em]" style={{ color: "#666A80" }}>
+          <p className="text-[10px] uppercase tracking-[0.5em]" style={hudMetaStyle}>
             an interactive bloom
           </p>
-          <p className="mt-2 text-[10px] tracking-wider" style={{ color: "#666A80" }}>
+          <p className="mt-2 text-[10px] tracking-wider" style={hudMetaStyle}>
             scroll &nbsp;·&nbsp; hover &nbsp;·&nbsp; press
           </p>
         </div>
@@ -793,7 +849,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 1 — Cinematic intro headline ── */}
         <div
           className="absolute inset-0 flex flex-col items-center justify-center text-center"
-          style={{ opacity: fadeIntro, pointerEvents: "none", transition: "opacity 1000ms" }}
+          style={chapterStyle(fadeIntro, { pointerEvents: "none", transition: "opacity 1000ms" })}
         >
           {/* eyebrow */}
           <p className="text-[9px] uppercase tracking-[0.85em] mb-6" style={{ color: "#6A6E84" }}>
@@ -810,6 +866,12 @@ export default function PolishedFilm() {
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
               filter: "drop-shadow(0 0 60px rgba(200,169,106,0.65)) drop-shadow(0 0 130px rgba(200,120,154,0.30))",
+              opacity: impactActive ? 0.95 : 1,
+              transition: "filter 120ms ease, opacity 120ms ease, transform 120ms ease",
+              transform: impactActive ? "skewX(-3deg) scale(1.03)" : "none",
+              textShadow: impactActive
+                ? "0 0 18px rgba(255,255,255,0.75), 0 0 28px rgba(198,118,214,0.35)"
+                : undefined,
             }}
           >
             磨
@@ -818,32 +880,32 @@ export default function PolishedFilm() {
           <div className="mt-4 flex items-center gap-5">
             <span
               className="h-px w-16"
-              style={{ background: "linear-gradient(90deg, transparent, rgba(200,169,106,0.45))" }}
+              style={{ background: "linear-gradient(90deg, transparent, rgba(246,241,223,0.78))" }}
             />
-            <p className="text-[10px] md:text-xs uppercase tracking-[0.7em]" style={{ color: "#9094A8" }}>
+            <p className="text-[10px] md:text-xs uppercase tracking-[0.7em]" style={hudLabelStyle}>
               to refine — with patience
             </p>
             <span
               className="h-px w-16"
-              style={{ background: "linear-gradient(90deg, rgba(200,169,106,0.45), transparent)" }}
+              style={{ background: "linear-gradient(90deg, rgba(246,241,223,0.78), transparent)" }}
             />
           </div>
           {/* scroll cue */}
           <div className="mt-10 flex flex-col items-center gap-3">
-            <span className="text-[9px] uppercase tracking-[0.75em]" style={{ color: "#3E4258" }}>
+            <span className="text-[9px] uppercase tracking-[0.75em]" style={hudMetaStyle}>
               scroll to bloom
             </span>
             <span
               className="hud-scroll-caret block w-px h-8"
-              style={{ background: "linear-gradient(180deg, rgba(200,169,106,0.55), transparent)" }}
+              style={{ background: "linear-gradient(180deg, rgba(246,241,223,0.82), transparent)" }}
             />
           </div>
         </div>
 
         {/* ── SECTION 2 — Hero + Material / Mood buttons ── */}
         <div
-          className="absolute inset-x-0 top-[9%] flex flex-col items-center text-center"
-          style={{ opacity: heroSec, transition: "opacity 700ms" }}
+          className="absolute inset-x-0 top-[8%] md:top-[7%] flex flex-col items-center text-center px-5"
+          style={chapterStyle(heroSec, { transition: "opacity 700ms" })}
         >
           {/* Eyebrow with flanking hairlines */}
           <div className="flex items-center gap-5 mb-5">
@@ -861,9 +923,9 @@ export default function PolishedFilm() {
           </div>
           {/* Large editorial headline */}
           <h1
-            className="font-extralight leading-[1.08] tracking-[0.08em] max-w-4xl px-8"
+            className="font-extralight leading-[1.04] tracking-[0.08em] max-w-4xl px-4"
             style={{
-              fontSize: "clamp(2rem, 6vw, 5.5rem)",
+              fontSize: "clamp(2.1rem, 4.8vw, 4.55rem)",
               fontFamily: "'Cormorant Garamond', serif",
               color: "transparent",
               backgroundImage: `linear-gradient(128deg, ${PALETTE.rose} 0%, ${PALETTE.ivory} 40%, ${PALETTE.sky} 100%)`,
@@ -885,8 +947,8 @@ export default function PolishedFilm() {
         </div>
 
         <div
-          className="absolute inset-x-0 bottom-[12%] flex flex-col items-center gap-5 transition-opacity duration-700 pointer-events-auto"
-          style={{ opacity: heroSec }}
+          className="absolute inset-x-0 bottom-[5%] md:bottom-[7%] flex flex-col items-center gap-3 md:gap-4 transition-opacity duration-700 pointer-events-auto px-5"
+          style={chapterStyle(heroSec)}
         >
           <p className="text-[10px] uppercase tracking-[0.5em]" style={{ color: "#9094A8" }}>materials</p>
           <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
@@ -900,7 +962,7 @@ export default function PolishedFilm() {
             ))}
           </div>
           <p className="mt-2 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#9094A8" }}>moods</p>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center justify-center gap-4 md:gap-6">
             <MoodButton color={PALETTE.rose} accent="#8A3A6A" label="tenderness" onClick={() => setMood("rose")} />
             <MoodButton color={PALETTE.gold} accent="#8A6A20" label="warmth"     onClick={() => setMood("gold")} />
             <MoodButton color={PALETTE.sky}  accent="#3A6A9A" label="serenity"   onClick={() => setMood("sky")}  />
@@ -941,7 +1003,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 5 — Philosophy ── */}
         <div
           className="absolute inset-x-0 top-[14%] flex flex-col items-center text-center px-6 transition-opacity duration-700"
-          style={{ opacity: s[4] }}
+          style={chapterStyle(s[4])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>05 · philosophy</p>
           <p
@@ -956,7 +1018,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 6 — Movement ── */}
         <div
           className="absolute inset-x-0 bottom-[14%] flex flex-col items-center text-center transition-opacity duration-700 pointer-events-auto"
-          style={{ opacity: s[5] }}
+          style={chapterStyle(s[5])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>06 · movement</p>
           <p
@@ -983,7 +1045,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 7 — Build-up ── */}
         <div
           className="absolute inset-x-0 top-[18%] flex flex-col items-center text-center transition-opacity duration-700"
-          style={{ opacity: s[6] }}
+          style={chapterStyle(s[6])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>07 · build-up</p>
           <p
@@ -1012,7 +1074,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 8 — Transition / light beams ── */}
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-700"
-          style={{ opacity: s[7] }}
+          style={chapterStyle(s[7])}
         >
           {[0, 1, 2, 3, 4].map((i) => (
             <div
@@ -1032,7 +1094,7 @@ export default function PolishedFilm() {
         </div>
         <div
           className="absolute inset-x-0 top-[12%] text-center transition-opacity duration-700"
-          style={{ opacity: s[7] }}
+          style={chapterStyle(s[7])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>08 · transition</p>
           <p
@@ -1046,7 +1108,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 9 — Signature climax ── */}
         <div
           className="absolute top-1/2 left-0 right-0 -translate-y-1/2 text-center transition-opacity duration-700"
-          style={{ opacity: s[8] }}
+          style={chapterStyle(s[8])}
         >
           <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>
             09 · the polished man
@@ -1071,7 +1133,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 10 — Afterglow ── */}
         <div
           className="absolute inset-x-0 bottom-[16%] text-center px-6 transition-opacity duration-700"
-          style={{ opacity: s[9] }}
+          style={chapterStyle(s[9])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>10 · afterglow</p>
           <p
@@ -1086,7 +1148,7 @@ export default function PolishedFilm() {
         {/* ── SECTION 11 — Footer ── */}
         <div
           className="absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-1000 pointer-events-auto"
-          style={{ opacity: Math.max(s[10], endOn) }}
+          style={chapterStyle(Math.max(s[10], endOn))}
         >
           {/* decorative divider */}
           <div className="mb-8 flex items-center gap-4">
@@ -1355,7 +1417,7 @@ function MoodButton({
       className="group flex flex-col items-center gap-4 transition-transform duration-500 hover:scale-110 active:scale-95"
     >
       {/* Outer glow halo — large, always visible */}
-      <span className="relative flex items-center justify-center" style={{ width: 88, height: 88 }}>
+      <span className="relative flex items-center justify-center" style={{ width: "clamp(68px, 8vw, 88px)", height: "clamp(68px, 8vw, 88px)" }}>
         {/* Diffuse outer bloom */}
         <span
           className="absolute rounded-full transition-opacity duration-500"
@@ -1378,8 +1440,8 @@ function MoodButton({
         <span
           className="relative rounded-full"
           style={{
-            width: 64,
-            height: 64,
+            width: "clamp(48px, 5.8vw, 64px)",
+            height: "clamp(48px, 5.8vw, 64px)",
             background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.35) 0%, ${color} 50%, ${accent} 100%)`,
             boxShadow: `0 0 0 1.5px ${color}66, 0 4px 24px ${color}BB, 0 8px 48px ${color}66, inset 0 -4px 10px rgba(0,0,0,0.30)`,
           }}
@@ -1388,8 +1450,8 @@ function MoodButton({
         <span
           className="absolute rounded-full pointer-events-none"
           style={{
-            width: 18,
-            height: 12,
+            width: "clamp(12px, 1.8vw, 18px)",
+            height: "clamp(8px, 1.2vw, 12px)",
             top: 14,
             left: 18,
             background: "rgba(255,255,255,0.45)",
@@ -1457,7 +1519,7 @@ function SidePanel({
       className={`absolute top-1/2 -translate-y-1/2 max-w-md px-6 transition-opacity duration-700 ${
         side === "left" ? "left-4 md:left-16 text-left" : "right-4 md:right-16 text-right"
       }`}
-      style={{ opacity }}
+      style={{ opacity, visibility: opacity > 0.02 ? "visible" : "hidden" }}
     >
       <div
         className="p-6 rounded-2xl backdrop-blur-md border"
