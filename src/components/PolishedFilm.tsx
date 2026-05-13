@@ -142,8 +142,10 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
 
   const [hovered, setHovered] = useState(false);
   const [clicked, setClicked] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const isDragging = useRef(false);
   const group = useRef<THREE.Group>(null!);
+  const dragStartMouse = useRef<{ x: number; y: number } | null>(null);
+  const dragStartRotation = useRef<{ x: number; y: number } | null>(null);
   const wheelDelta = useRef(0);
 
   const gltf = useLoader(GLTFLoader, builtObjectUrl, (loader) => loader.setDRACOLoader(dracoLoader));
@@ -158,7 +160,7 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
 
     cloned.position.sub(center);
     cloned.scale.setScalar(3.15 / maxAxis);
-    cloned.traverse((object) => {
+    cloned.traverse((object: THREE.Object3D) => {
       if ((object as THREE.Mesh).isMesh) {
         object.castShadow = true;
         object.receiveShadow = true;
@@ -175,10 +177,17 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
     const targetScale = clicked ? 1.24 : hovered ? 1.14 : 1;
     group.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
 
-    const targetY = isDragging ? mouse.x * 0.9 : group.current.rotation.y + 0.012 + wheelDelta.current * 0.12;
-    const targetX = isDragging ? -mouse.y * 0.35 : Math.sin(t * 0.5) * 0.05;
-    group.current.rotation.y += (targetY - group.current.rotation.y) * 0.08;
-    group.current.rotation.x += (targetX - group.current.rotation.x) * 0.08;
+    if (isDragging.current && dragStartMouse.current && dragStartRotation.current) {
+      const deltaX = mouse.x - dragStartMouse.current.x;
+      const deltaY = mouse.y - dragStartMouse.current.y;
+      group.current.rotation.y = dragStartRotation.current.y + deltaX * 2;
+      group.current.rotation.x = dragStartRotation.current.x + deltaY * 2;
+    } else {
+      const targetY = group.current.rotation.y + 0.012 + wheelDelta.current * 0.12;
+      const targetX = Math.sin(t * 0.5) * 0.05;
+      group.current.rotation.y += (targetY - group.current.rotation.y) * 0.08;
+      group.current.rotation.x += (targetX - group.current.rotation.x) * 0.08;
+    }
     group.current.position.y = -0.08 + Math.sin(t * 0.55) * 0.045 + (clicked ? 0.05 : 0);
     wheelDelta.current *= 0.86;
     scroll.pulse *= 0.96;
@@ -190,42 +199,47 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
 
   const handlePointerDown = (event: any) => {
     event.stopPropagation();
-    setIsDragging(true);
     setClicked(true);
     scroll.pulse = 1;
-    setTimeout(() => setClicked(false), 220);
+
+    // ✅ Snapshot mouse position as plain numbers (not the Vector2 reference)
+    isDragging.current = true;
+    dragStartMouse.current = { x: mouse.x, y: mouse.y };
+    dragStartRotation.current = {
+      x: group.current.rotation.x,
+      y: group.current.rotation.y,
+    };
+
+    setTimeout(() => setClicked(false), 220);  
   };
 
   useEffect(() => {
     const handlePointerUp = () => {
-      if (isDragging) {
-        setIsDragging(false);
-        triggerImpact();
+      if (isDragging.current) {
+        isDragging.current = false;
+        dragStartMouse.current = null;
+        dragStartRotation.current = null;
+        if (onImpact) onImpact();
       }
     };
     window.addEventListener("pointerup", handlePointerUp);
     return () => window.removeEventListener("pointerup", handlePointerUp);
-  }, [isDragging]);
+  }, [onImpact]); // ✅ onImpact dep instead of isDragging state
 
   const handleWheel = (event: any) => {
     event.stopPropagation();
-    event.preventDefault();
     wheelDelta.current = Math.max(-1.4, Math.min(1.4, wheelDelta.current + event.deltaY * -0.0014));
     scroll.pulse = 1;
   };
 
   return (
-    <Float speed={0.9} rotationIntensity={0.08} floatIntensity={0.22}>
+    <Float speed={0.9} rotationIntensity={isDragging.current ? 0 : 0.08} floatIntensity={0.22}>
       <group
         ref={group}
         scale={1}
         rotation={[0, Math.PI * 0.12, 0]}
-        onPointerOver={(event) => {
-          event.stopPropagation();
-          setHovered(true);
-          scroll.pulse = 1;
-        }}
-        onPointerOut={(event) => { event.stopPropagation(); setHovered(false); }}
+        onPointerOver={(e) => { e.stopPropagation(); setHovered(true); scroll.pulse = 1; }}
+        onPointerOut={(e)  => { e.stopPropagation(); setHovered(false); }}
         onPointerDown={handlePointerDown}
         onWheel={handleWheel}
       >
@@ -588,9 +602,10 @@ function ChapterNav({ p }: { p: number }) {
           <span
             className="text-[8px] uppercase tracking-[0.45em] whitespace-nowrap overflow-hidden transition-all duration-300"
             style={{
-              color:    "#9094A8",
-              maxWidth: hovered === i ? "90px" : "0px",
-              opacity:  hovered === i ? 1 : 0,
+              color:      "#9094A8",
+              fontFamily: "var(--font-accent)",
+              maxWidth:   hovered === i ? "90px" : "0px",
+              opacity:    hovered === i ? 1 : 0,
             }}
           >
             {label}
@@ -641,12 +656,12 @@ function MoodReveal({ mood }: { mood: "idle" | "rose" | "gold" | "sky" }) {
       className="pointer-events-none fixed inset-0 flex flex-col items-center justify-center"
       style={{ zIndex: 25, opacity, transition: "opacity 0.65s ease" }}
     >
-      <p className="text-[8px] uppercase tracking-[1.25em] mb-4" style={{ color: "rgba(144,148,168,0.75)" }}>
+      <p className="text-[8px] uppercase tracking-[1.25em] mb-4" style={{ color: "rgba(144,148,168,0.75)", fontFamily: "var(--font-accent)" }}>
         mood ·
       </p>
       <p
         style={{
-          fontFamily:    "'Cormorant Garamond', serif",
+          fontFamily:    "var(--font-display)",
           fontSize:      "clamp(3rem, 9vw, 6.5rem)",
           fontWeight:    200,
           letterSpacing: "0.38em",
@@ -764,11 +779,13 @@ export default function PolishedFilm() {
   const hudLabelStyle: CSSProperties = {
     color: "#F6F1DF",
     fontWeight: 600,
+    fontFamily: "var(--font-accent)",
     textShadow: "0 0 14px rgba(237,232,216,0.58), 0 1px 5px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,0.95)",
   };
   const hudMetaStyle: CSSProperties = {
     color: "#EDE8D8",
     fontWeight: 600,
+    fontFamily: "var(--font-accent)",
     textShadow: "0 0 12px rgba(237,232,216,0.50), 0 1px 5px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.90)",
   };
   const chapterStyle = (opacity: number, extra?: CSSProperties): CSSProperties => ({
@@ -856,7 +873,7 @@ export default function PolishedFilm() {
           style={chapterStyle(fadeIntro, { pointerEvents: "none", transition: "opacity 1000ms" })}
         >
           {/* eyebrow */}
-          <p className="text-[9px] uppercase tracking-[0.85em] mb-6" style={{ color: "#6A6E84" }}>
+          <p className="text-[9px] uppercase tracking-[0.85em] mb-6" style={{ color: "#6A6E84", fontFamily: "var(--font-accent)" }}>
             polish · atelier
           </p>
           {/* Giant 磨 character */}
@@ -864,7 +881,7 @@ export default function PolishedFilm() {
             className="leading-none font-extralight hud-mo-pulse"
             style={{
               fontSize: "clamp(7rem, 18vw, 14rem)",
-              fontFamily: "'Cormorant Garamond', 'Songti SC', 'Noto Serif CJK TC', serif",
+              fontFamily: "var(--font-display)",
               color: "transparent",
               backgroundImage: `linear-gradient(170deg, ${PALETTE.gold} 0%, ${PALETTE.ivory} 45%, ${PALETTE.rose} 85%, ${PALETTE.gold} 100%)`,
               WebkitBackgroundClip: "text",
@@ -930,7 +947,7 @@ export default function PolishedFilm() {
             className="font-extralight leading-[1.04] tracking-[0.08em] max-w-4xl px-4"
             style={{
               fontSize: "clamp(2.1rem, 4.8vw, 4.55rem)",
-              fontFamily: "'Cormorant Garamond', serif",
+              fontFamily: "var(--font-display)",
               color: "transparent",
               backgroundImage: `linear-gradient(128deg, ${PALETTE.rose} 0%, ${PALETTE.ivory} 40%, ${PALETTE.sky} 100%)`,
               WebkitBackgroundClip: "text",
@@ -943,7 +960,7 @@ export default function PolishedFilm() {
           {/* Tag line */}
           <div className="mt-6 flex items-center gap-3" style={{ color: "#444860" }}>
             <span className="h-px w-6" style={{ background: "currentColor" }} />
-            <p className="text-[10px] tracking-[0.5em] uppercase" style={{ color: "#666A80" }}>
+            <p className="text-[10px] tracking-[0.5em] uppercase" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
               refined &nbsp;·&nbsp; cinematic &nbsp;·&nbsp; interactive
             </p>
             <span className="h-px w-6" style={{ background: "currentColor" }} />
@@ -977,14 +994,14 @@ export default function PolishedFilm() {
         <SidePanel side="left" opacity={s[2]} eyebrow="03 · craft">
           <p
             className="text-2xl md:text-3xl font-light leading-snug"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             We craft interactive 3D experiences for{" "}
             <em style={{ color: PALETTE.rose }}>luxury</em>,{" "}
             <em style={{ color: PALETTE.gold }}>automotive</em> and{" "}
             <em style={{ color: PALETTE.sky  }}>energy</em> brands.
           </p>
-          <p className="mt-4 text-xs tracking-[0.3em] uppercase" style={{ color: "#666A80" }}>
+          <p className="mt-4 text-xs tracking-[0.3em] uppercase" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             real-time · webgl · cinematic
           </p>
         </SidePanel>
@@ -993,7 +1010,7 @@ export default function PolishedFilm() {
         <SidePanel side="right" opacity={s[3]} eyebrow="04 · patience">
           <p
             className="text-2xl md:text-3xl font-light leading-snug"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             Every project is refined with patience, cinematic storytelling, and visual polish.
           </p>
@@ -1012,7 +1029,7 @@ export default function PolishedFilm() {
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>05 · philosophy</p>
           <p
             className="mt-6 max-w-2xl text-xl md:text-2xl font-light leading-relaxed"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             We believe a brand should breathe — not shout. Each frame is a brushstroke,
             each interaction a small act of attention.
@@ -1027,7 +1044,7 @@ export default function PolishedFilm() {
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>06 · movement</p>
           <p
             className="mt-3 text-xl md:text-2xl font-light tracking-[0.12em]"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             hover · scroll · breathe
           </p>
@@ -1055,7 +1072,7 @@ export default function PolishedFilm() {
           <p
             className="mt-4 text-3xl md:text-5xl font-extralight tracking-[0.2em]"
             style={{
-              fontFamily: "'Cormorant Garamond', serif",
+              fontFamily: "var(--font-display)",
               color: "transparent",
               backgroundImage: `linear-gradient(120deg, ${PALETTE.rose}, ${PALETTE.gold})`,
               WebkitBackgroundClip: "text",
@@ -1103,7 +1120,7 @@ export default function PolishedFilm() {
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>08 · transition</p>
           <p
             className="mt-3 text-xl md:text-2xl font-light italic"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             a slow inhale before the bloom
           </p>
@@ -1120,7 +1137,7 @@ export default function PolishedFilm() {
           <p
             className="mt-6 text-4xl md:text-6xl font-light tracking-[0.4em]"
             style={{
-              fontFamily: "'Cormorant Garamond', serif",
+              fontFamily: "var(--font-display)",
               color: "transparent",
               backgroundImage: `linear-gradient(120deg, ${PALETTE.rose}, ${PALETTE.gold}, ${PALETTE.sky}, ${PALETTE.rose})`,
               WebkitBackgroundClip: "text",
@@ -1129,7 +1146,7 @@ export default function PolishedFilm() {
           >
             磨 → POLISH
           </p>
-          <p className="mt-4 text-xs tracking-[0.45em]" style={{ color: "#666A80" }}>
+          <p className="mt-4 text-xs tracking-[0.45em]" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             five years &nbsp;·&nbsp; crafted in light
           </p>
         </div>
@@ -1142,7 +1159,7 @@ export default function PolishedFilm() {
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>10 · afterglow</p>
           <p
             className="mt-4 max-w-xl mx-auto text-lg md:text-xl font-light italic leading-relaxed"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             What lingers is not the spectacle — it is the warmth that stays
             when the screen quiets.
@@ -1175,14 +1192,14 @@ export default function PolishedFilm() {
           </p>
           <p
             className="mt-4 text-2xl md:text-3xl font-extralight tracking-[0.4em]"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "#EDE8D8" }}
+            style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
           >
             until next bloom
           </p>
-          <p className="mt-3 text-[10px] tracking-[0.4em] uppercase" style={{ color: "#666A80" }}>
+          <p className="mt-3 text-[10px] tracking-[0.4em] uppercase" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             hello@polish.atelier
           </p>
-          <div className="mt-8 flex items-center gap-6 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#666A80" }}>
+          <div className="mt-8 flex items-center gap-6 text-[10px] uppercase tracking-[0.5em]" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             <a className="transition-colors hover:text-[#C8A96A]" href="#">instagram</a>
             <span className="h-px w-8" style={{ background: "currentColor" }} />
             <a className="transition-colors hover:text-[#C8A96A]" href="#">journal</a>
@@ -1348,7 +1365,7 @@ function IntroOverlay({ phase, onSkip }: { phase: 0 | 1 | 2 | 3; onSkip: () => v
         <div
           className="text-[7rem] md:text-[10rem] leading-none font-extralight intro-mo"
           style={{
-            fontFamily:           '"Cormorant Garamond", "Songti SC", serif',
+            fontFamily:           "var(--font-display)",
             background:           "linear-gradient(180deg, #C8A96A 0%, #EDE8D8 50%, #C87A9A 100%)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor:  "transparent",
@@ -1361,7 +1378,7 @@ function IntroOverlay({ phase, onSkip }: { phase: 0 | 1 | 2 | 3; onSkip: () => v
 
         <div
           className="mt-6 text-[11px] md:text-xs uppercase tracking-[0.55em]"
-          style={{ color: "#9094A8" }}
+          style={{ color: "#9094A8", fontFamily: "var(--font-accent)" }}
         >
           to refine — with patience
         </div>
@@ -1536,7 +1553,7 @@ function SidePanel({
       >
         <p
           className="text-[10px] uppercase tracking-[0.5em] mb-3"
-          style={{ color: "#9094A8" }}
+          style={{ color: "#9094A8", fontFamily: "var(--font-accent)" }}
         >
           {eyebrow}
         </p>

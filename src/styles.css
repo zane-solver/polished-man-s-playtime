@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,200;0,300;0,400;1,200;1,300;1,400&family=Cinzel:wght@400;500;600&family=Raleway:wght@300;400;500&display=swap');
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -63,6 +64,9 @@
 
 :root {
   --radius: 0.625rem;
+  --font-display: 'Cormorant Garamond', 'Songti SC', 'Noto Serif CJK TC', serif;
+  --font-accent: 'Cinzel', serif;
+  --font-ui: 'Raleway', sans-serif;
   --background: oklch(0.065 0.025 240);
   --foreground: oklch(0.88 0.01 0);
   --card: oklch(0.13 0.04 240);
@@ -140,5 +144,6 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-ui);
   }
 }
