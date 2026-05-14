@@ -1,16 +1,17 @@
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Environment, Float, Sparkles, ContactShadows } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { gsap } from "gsap";
 import * as THREE from "three";
 // @ts-ignore
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 // @ts-ignore
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
+import { useParticleBurst } from "@/hooks/useParticleBurst";
 
 /* ---------------- Global scroll state ---------------- */
-const scroll = { p: 0, mood: "idle" as "idle" | "rose" | "gold" | "sky", pulse: 0, hover: 0 };
+const scroll = { p: 0, mood: "idle" as "idle" | "rose" | "gold" | "sky", pulse: 0, hover: 0, clickPulse: 0 };
 
 /* ---------------- Dark Luxury palette ---------------- */
 const PALETTE = {
@@ -147,6 +148,8 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
   const dragStartMouse = useRef<{ x: number; y: number } | null>(null);
   const dragStartRotation = useRef<{ x: number; y: number } | null>(null);
   const wheelDelta = useRef(0);
+  const rotationVelocity = useRef(new THREE.Vector3(0, 0, 0));
+  const bounceVelocity = useRef(0);
 
   const gltf = useLoader(GLTFLoader, builtObjectUrl, (loader) => loader.setDRACOLoader(dracoLoader));
   const scene = useMemo(() => {
@@ -174,6 +177,7 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
     if (!group.current) return;
 
     const t = state.clock.elapsedTime;
+    const delta = state.clock.getDelta();
     const targetScale = clicked ? 1.24 : hovered ? 1.14 : 1;
     group.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
 
@@ -187,8 +191,16 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
       const targetX = Math.sin(t * 0.5) * 0.05;
       group.current.rotation.y += (targetY - group.current.rotation.y) * 0.08;
       group.current.rotation.x += (targetX - group.current.rotation.x) * 0.08;
+
+      group.current.rotation.x += rotationVelocity.current.x * delta;
+      group.current.rotation.y += rotationVelocity.current.y * delta;
+      group.current.rotation.z += rotationVelocity.current.z * delta;
+      rotationVelocity.current.multiplyScalar(0.82);
+      bounceVelocity.current *= 0.80;
     }
-    group.current.position.y = -0.08 + Math.sin(t * 0.55) * 0.045 + (clicked ? 0.05 : 0);
+
+    const bounce = Math.sin(t * 7) * bounceVelocity.current * 0.06;
+    group.current.position.y = -0.08 + bounce + (clicked ? 0.05 : 0);
     wheelDelta.current *= 0.86;
     scroll.pulse *= 0.96;
   });
@@ -201,8 +213,8 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
     event.stopPropagation();
     setClicked(true);
     scroll.pulse = 1;
+    scroll.clickPulse = 1;
 
-    // ✅ Snapshot mouse position as plain numbers (not the Vector2 reference)
     isDragging.current = true;
     dragStartMouse.current = { x: mouse.x, y: mouse.y };
     dragStartRotation.current = {
@@ -210,7 +222,14 @@ function BuiltObject({ onImpact }: { onImpact?: () => void }) {
       y: group.current.rotation.y,
     };
 
-    setTimeout(() => setClicked(false), 220);  
+    rotationVelocity.current.add(new THREE.Vector3(
+      (event.clientY / window.innerHeight - 0.5) * 1.2,
+      (event.clientX / window.innerWidth - 0.5) * 1.5,
+      (Math.random() - 0.5) * 0.24,
+    ));
+    bounceVelocity.current = 0.95;
+
+    setTimeout(() => setClicked(false), 220);
   };
 
   useEffect(() => {
@@ -256,6 +275,7 @@ function Backdrop() {
     () => ({
       uTime:   { value: 0 },
       uMouse:  { value: new THREE.Vector2(0, 0) },
+      uClick:  { value: 0 },
       uColorA: { value: new THREE.Color(PALETTE.deepObsidian) },
       uColorB: { value: new THREE.Color(PALETTE.steelCharcoal) },
       uColorC: { value: new THREE.Color(PALETTE.electricAzure) },
@@ -267,7 +287,9 @@ function Backdrop() {
     if (mat.current) {
       mat.current.uniforms.uTime.value = s.clock.elapsedTime;
       mat.current.uniforms.uMouse.value.set(mouse.x, mouse.y);
+      mat.current.uniforms.uClick.value = scroll.clickPulse;
     }
+    if (scroll.clickPulse > 0.01) scroll.clickPulse *= 0.78;
   });
   return (
     <mesh position={[0, 0, -6]} scale={[30, 18, 1]}>
@@ -280,6 +302,7 @@ function Backdrop() {
           precision highp float;
           varying vec2 vUv;
           uniform float uTime;
+          uniform float uClick;
           uniform vec2 uMouse;
           uniform vec3 uColorA;
           uniform vec3 uColorB;
@@ -293,6 +316,16 @@ function Backdrop() {
             vec3 col = mix(uColorA, uColorB, smoothstep(0.0, 1.0, uv.y + wave));
             col = mix(col, uColorC, d1*0.55);
             col = mix(col, uColorA, (1.0-d2)*0.25);
+
+            float clickStrength = pow(uClick, 1.8);
+            float dist = length(uv - vec2(0.5 + m.x*0.05, 0.5 + m.y*0.05));
+            float clickGlow = exp(-12.0 * pow(dist - (0.18 + uClick * 0.12), 2.0));
+            float clickRing = smoothstep(0.22 + uClick * 0.10, 0.18 + uClick * 0.06, dist);
+            vec3 clickColor = vec3(1.0, 0.94, 0.72) * clickStrength;
+
+            col += clickColor * clickGlow * 0.26;
+            col += clickColor * clickRing * 0.08;
+
             float v = smoothstep(1.4, 0.2, length(uv - 0.5));
             col *= mix(0.92, 1.05, v);
             gl_FragColor = vec4(col, 1.0);
@@ -577,6 +610,71 @@ function CursorGlow() {
 }
 
 /* ── Click-to-jump chapter navigation dots ── */
+function SplitWords({
+  text,
+  active,
+  as = "p",
+  className,
+  style,
+}: {
+  text: string;
+  active: boolean;
+  as?: "p" | "h1";
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const rootRef = useRef<HTMLElement | null>(null);
+  const wordRefs = useRef<HTMLSpanElement[]>([]);
+  const parts = useMemo(() => text.split(/(\s+)/), [text]);
+
+  useEffect(() => {
+    const words = wordRefs.current.filter(Boolean);
+    if (!words.length) return;
+
+    if (!active) {
+      gsap.set(words, { opacity: 0, y: 18, filter: "blur(10px)" });
+      return;
+    }
+
+    gsap.killTweensOf(words);
+    gsap.fromTo(
+      words,
+      { opacity: 0, y: 20, filter: "blur(12px)" },
+      {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: 0.9,
+        ease: "power3.out",
+        stagger: 0.045,
+      }
+    );
+  }, [active, text]);
+
+  const Tag = as;
+  wordRefs.current = [];
+
+  return (
+    <Tag ref={rootRef as never} className={className} style={style}>
+      {parts.map((part, i) =>
+        /^\s+$/.test(part) ? (
+          part
+        ) : (
+          <span
+            key={`${part}-${i}`}
+            ref={(node) => {
+              if (node) wordRefs.current.push(node);
+            }}
+            className="inline-block will-change-transform"
+          >
+            {part}
+          </span>
+        )
+      )}
+    </Tag>
+  );
+}
+
 function ChapterNav({ p }: { p: number }) {
   const labels  = ["Intro", "Hero", "Craft", "Patience", "Philosophy", "Movement", "Build", "Transition", "The Man", "Afterglow", "Fin"];
   const current = Math.min(10, Math.floor(p * 11));
@@ -587,8 +685,43 @@ function ChapterNav({ p }: { p: number }) {
     window.scrollTo({ top: h * ((i + 0.5) / 11), behavior: "smooth" });
   };
 
+  const dotYs = labels.map((_, i) => 9 + i * 21);
+  const threadPath = dotYs.reduce((path, y, i) => {
+    const x = i % 2 === 0 ? 12 : 18;
+    return `${path}${i === 0 ? "M" : " L"}${x} ${y}`;
+  }, "");
+
   return (
-    <div className="absolute right-6 md:right-12 top-1/2 -translate-y-1/2 flex flex-col items-end gap-[9px] pointer-events-auto">
+    <div className="absolute right-6 md:right-12 top-1/2 -translate-y-1/2 pointer-events-auto">
+      <svg
+        className="pointer-events-none absolute right-0 top-0 h-full w-8 overflow-visible"
+        viewBox="0 0 30 228"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          d={threadPath}
+          fill="none"
+          stroke="rgba(200,169,106,0.20)"
+          strokeWidth="1"
+          strokeLinecap="round"
+        />
+        <path
+          d={threadPath}
+          fill="none"
+          stroke={PALETTE.gold}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          pathLength={1}
+          style={{
+            strokeDasharray: 1,
+            strokeDashoffset: 1 - Math.min(1, Math.max(0, p)),
+            filter: `drop-shadow(0 0 8px ${PALETTE.gold})`,
+            transition: "stroke-dashoffset 180ms ease-out",
+          }}
+        />
+      </svg>
+      <div className="relative flex flex-col items-end gap-[9px] pr-3">
       {labels.map((label, i) => (
         <button
           key={i}
@@ -626,6 +759,7 @@ function ChapterNav({ p }: { p: number }) {
           />
         </button>
       ))}
+      </div>
     </div>
   );
 }
@@ -721,6 +855,16 @@ export default function PolishedFilm() {
   const [impactActive, setImpactActive]   = useState(false);
   const impactTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Golden particle burst effect
+  const { containerRef, handleClick } = useParticleBurst({
+    count: 12,
+    duration: 0.8,
+    spread: 360,
+    velocity: 300,
+    color: '#C8A96A', // golden
+    size: 4,
+  });
+
   useEffect(() => {
     setMounted(true);
     const onScroll = () => {
@@ -797,7 +941,12 @@ export default function PolishedFilm() {
   return (
     <>
       {/* ── Cinematic canvas — dark obsidian base so 3D object pops ── */}
-      <div className="fixed inset-0 z-0" style={{ background: PALETTE.deepObsidian }}>
+      <div 
+        ref={containerRef}
+        className="fixed inset-0 z-0" 
+        style={{ background: PALETTE.deepObsidian }}
+        onClick={(e) => handleClick(e as any)}
+      >
         <SceneErrorBoundary fallback={<SceneFallback />}>
           <Canvas
             dpr={[1, 1.75]}
@@ -943,7 +1092,10 @@ export default function PolishedFilm() {
             />
           </div>
           {/* Large editorial headline */}
-          <h1
+          <SplitWords
+            as="h1"
+            text="A creative studio crafting immersive 3D experiences"
+            active={heroSec > 0.12}
             className="font-extralight leading-[1.04] tracking-[0.08em] max-w-4xl px-4"
             style={{
               fontSize: "clamp(2.1rem, 4.8vw, 4.55rem)",
@@ -954,9 +1106,7 @@ export default function PolishedFilm() {
               backgroundClip: "text",
               filter: "drop-shadow(0 2px 40px rgba(91,155,213,0.22))",
             }}
-          >
-            A creative studio crafting immersive 3D experiences
-          </h1>
+          />
           {/* Tag line */}
           <div className="mt-6 flex items-center gap-3" style={{ color: "#444860" }}>
             <span className="h-px w-6" style={{ background: "currentColor" }} />
@@ -1027,13 +1177,12 @@ export default function PolishedFilm() {
           style={chapterStyle(s[4])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>05 · philosophy</p>
-          <p
+          <SplitWords
+            text="We believe a brand should breathe, not shout. Each frame is a brushstroke, each interaction a small act of attention."
+            active={s[4] > 0.12}
             className="mt-6 max-w-2xl text-xl md:text-2xl font-light leading-relaxed"
             style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
-          >
-            We believe a brand should breathe — not shout. Each frame is a brushstroke,
-            each interaction a small act of attention.
-          </p>
+          />
         </div>
 
         {/* ── SECTION 6 — Movement ── */}
@@ -1042,12 +1191,12 @@ export default function PolishedFilm() {
           style={chapterStyle(s[5])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>06 · movement</p>
-          <p
+          <SplitWords
+            text="hover scroll breathe"
+            active={s[5] > 0.12}
             className="mt-3 text-xl md:text-2xl font-light tracking-[0.12em]"
             style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
-          >
-            hover · scroll · breathe
-          </p>
+          />
           <button
             onClick={() => { scroll.pulse = 1; setMood("rose"); }}
             onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.5); }}
@@ -1069,7 +1218,9 @@ export default function PolishedFilm() {
           style={chapterStyle(s[6])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>07 · build-up</p>
-          <p
+          <SplitWords
+            text="light gathers"
+            active={s[6] > 0.12}
             className="mt-4 text-3xl md:text-5xl font-extralight tracking-[0.2em]"
             style={{
               fontFamily: "var(--font-display)",
@@ -1078,9 +1229,7 @@ export default function PolishedFilm() {
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
             }}
-          >
-            light gathers
-          </p>
+          />
         </div>
         {/* radial build-up glow */}
         <div
@@ -1118,12 +1267,12 @@ export default function PolishedFilm() {
           style={chapterStyle(s[7])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>08 · transition</p>
-          <p
+          <SplitWords
+            text="a slow inhale before the bloom"
+            active={s[7] > 0.12}
             className="mt-3 text-xl md:text-2xl font-light italic"
             style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
-          >
-            a slow inhale before the bloom
-          </p>
+          />
         </div>
 
         {/* ── SECTION 9 — Signature climax ── */}
@@ -1134,7 +1283,9 @@ export default function PolishedFilm() {
           <p className="text-[10px] md:text-xs uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>
             09 · the polished man
           </p>
-          <p
+          <SplitWords
+            text="磨 -> POLISH"
+            active={s[8] > 0.12}
             className="mt-6 text-4xl md:text-6xl font-light tracking-[0.4em]"
             style={{
               fontFamily: "var(--font-display)",
@@ -1143,9 +1294,7 @@ export default function PolishedFilm() {
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
             }}
-          >
-            磨 → POLISH
-          </p>
+          />
           <p className="mt-4 text-xs tracking-[0.45em]" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             five years &nbsp;·&nbsp; crafted in light
           </p>
@@ -1157,13 +1306,12 @@ export default function PolishedFilm() {
           style={chapterStyle(s[9])}
         >
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>10 · afterglow</p>
-          <p
+          <SplitWords
+            text="What lingers is not the spectacle. It is the warmth that stays when the screen quiets."
+            active={s[9] > 0.12}
             className="mt-4 max-w-xl mx-auto text-lg md:text-xl font-light italic leading-relaxed"
             style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
-          >
-            What lingers is not the spectacle — it is the warmth that stays
-            when the screen quiets.
-          </p>
+          />
         </div>
 
         {/* ── SECTION 11 — Footer ── */}
@@ -1190,12 +1338,12 @@ export default function PolishedFilm() {
           <p className="text-[10px] uppercase tracking-[0.6em]" style={{ color: "#9094A8" }}>
             crafted with patience
           </p>
-          <p
+          <SplitWords
+            text="until next bloom"
+            active={Math.max(s[10], endOn) > 0.12}
             className="mt-4 text-2xl md:text-3xl font-extralight tracking-[0.4em]"
             style={{ fontFamily: "var(--font-display)", color: "#EDE8D8" }}
-          >
-            until next bloom
-          </p>
+          />
           <p className="mt-3 text-[10px] tracking-[0.4em] uppercase" style={{ color: "#666A80", fontFamily: "var(--font-accent)" }}>
             hello@polish.atelier
           </p>
@@ -1235,19 +1383,32 @@ export default function PolishedFilm() {
         }
         .mood-orb-breathe { animation: moodOrbBreathe 3s ease-in-out infinite; }
 
-        @keyframes hudScanline {
-          from { background-position: 0 0; }
-          to   { background-position: 0 120px; }
+        @keyframes hudGrainDrift {
+          0%   { transform: translate3d(0, 0, 0); }
+          20%  { transform: translate3d(-2%, 1%, 0); }
+          40%  { transform: translate3d(1%, -2%, 0); }
+          60%  { transform: translate3d(-1%, 2%, 0); }
+          80%  { transform: translate3d(2%, -1%, 0); }
+          100% { transform: translate3d(0, 0, 0); }
         }
-        .hud-scanlines {
-          background-image: repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 2px,
-            rgba(0,0,20,0.06) 2px,
-            rgba(0,0,20,0.06) 4px
-          );
-          animation: hudScanline 12s linear infinite;
+        .hud-grain {
+          inset: -12%;
+          width: 124%;
+          height: 124%;
+          background-image:
+            radial-gradient(circle at 20% 30%, rgba(255,255,255,0.055) 0 1px, transparent 1.2px),
+            radial-gradient(circle at 75% 15%, rgba(200,169,106,0.050) 0 1px, transparent 1.3px),
+            radial-gradient(circle at 45% 80%, rgba(91,155,213,0.045) 0 1px, transparent 1.2px);
+          background-size: 17px 19px, 23px 29px, 31px 37px;
+          mix-blend-mode: soft-light;
+          animation: hudGrainDrift 1.8s steps(4, end) infinite;
+        }
+        @keyframes sidePanelSweep {
+          from { transform: translateX(-140%) skewX(-18deg); }
+          to   { transform: translateX(140%) skewX(-18deg); }
+        }
+        .side-panel-sweep {
+          animation: sidePanelSweep 3.4s ease-in-out infinite;
         }
 
         /* Hide native cursor on pointer devices — replaced by CursorGlow */
@@ -1256,10 +1417,10 @@ export default function PolishedFilm() {
         }
       `}</style>
 
-      {/* Cinematic scanlines overlay */}
+      {/* Cinematic grain overlay */}
       <div
-        className="pointer-events-none fixed inset-0 hud-scanlines"
-        style={{ zIndex: 6, opacity: 0.7 }}
+        className="pointer-events-none fixed hud-grain"
+        style={{ zIndex: 6, opacity: 0.42 }}
       />
 
       {/* Scroll spacer — 11 chapters */}
@@ -1431,10 +1592,24 @@ function MoodButton({
   label: string;
   onClick: () => void;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const handleMove = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left - rect.width / 2) * 0.22;
+    const y = (event.clientY - rect.top - rect.height / 2) * 0.22;
+    gsap.to(event.currentTarget, { x, y, duration: 0.45, ease: "power3.out" });
+  };
+  const handleLeave = (event: MouseEvent<HTMLButtonElement>) => {
+    gsap.to(event.currentTarget, { x: 0, y: 0, duration: 0.7, ease: "elastic.out(1, 0.45)" });
+  };
+
   return (
     <button
+      ref={buttonRef}
       onClick={onClick}
       onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.4); }}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
       className="group flex flex-col items-center gap-4 transition-transform duration-500 hover:scale-110 active:scale-95"
     >
       {/* Outer glow halo — large, always visible */}
@@ -1499,10 +1674,24 @@ function ChipButton({
   label: string;
   onClick: () => void;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const handleMove = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left - rect.width / 2) * 0.18;
+    const y = (event.clientY - rect.top - rect.height / 2) * 0.18;
+    gsap.to(event.currentTarget, { x, y, duration: 0.4, ease: "power3.out" });
+  };
+  const handleLeave = (event: MouseEvent<HTMLButtonElement>) => {
+    gsap.to(event.currentTarget, { x: 0, y: 0, duration: 0.65, ease: "elastic.out(1, 0.5)" });
+  };
+
   return (
     <button
+      ref={buttonRef}
       onClick={onClick}
       onMouseEnter={() => { scroll.pulse = Math.min(1, scroll.pulse + 0.3); }}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
       className="group relative px-5 py-2 rounded-full text-[10px] uppercase tracking-[0.4em] backdrop-blur-md border transition-all hover:scale-105 active:scale-95"
       style={{
         background:  "rgba(255,255,255,0.05)",
@@ -1543,7 +1732,7 @@ function SidePanel({
       style={{ opacity, visibility: opacity > 0.02 ? "visible" : "hidden" }}
     >
       <div
-        className="p-6 rounded-2xl backdrop-blur-md border"
+        className="relative overflow-hidden p-6 rounded-2xl backdrop-blur-md border"
         style={{
           background:  "rgba(8,8,22,0.70)",
           borderColor: "rgba(200,180,255,0.10)",
@@ -1551,6 +1740,19 @@ function SidePanel({
             "0 20px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)",
         }}
       >
+        <span
+          className="side-panel-sweep pointer-events-none absolute inset-0 rounded-2xl"
+          style={{
+            opacity: Math.min(1, opacity * 1.2),
+            background:
+              "linear-gradient(115deg, transparent 0%, rgba(200,169,106,0.0) 32%, rgba(200,169,106,0.75) 50%, rgba(91,155,213,0.36) 58%, transparent 74%)",
+          }}
+        />
+        <span
+          className="pointer-events-none absolute inset-px rounded-2xl"
+          style={{ background: "rgba(8,8,22,0.70)" }}
+        />
+        <div className="relative z-10">
         <p
           className="text-[10px] uppercase tracking-[0.5em] mb-3"
           style={{ color: "#9094A8", fontFamily: "var(--font-accent)" }}
@@ -1558,6 +1760,7 @@ function SidePanel({
           {eyebrow}
         </p>
         {children}
+        </div>
       </div>
     </div>
   );
