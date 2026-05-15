@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Environment, Float, Sparkles, ContactShadows } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { Component, Suspense, createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { gsap } from "gsap";
 import * as THREE from "three";
 // @ts-ignore
@@ -9,6 +9,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 // @ts-ignore
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
 import { useParticleBurst } from "@/hooks/useParticleBurst";
+import { useViewport } from "@/hooks/useViewport";
+import type { ViewportInfo } from "@/hooks/useViewport";
+
+/* ---------------- Viewport context for 3D scene responsiveness ---------------- */
+const ViewportCtx = createContext<ViewportInfo>({ width: 1440, height: 900, aspect: 16/9, isMobile: false, isSmallMobile: false, scaleFactor: 1 });
+export const useViewportCtx = () => useContext(ViewportCtx);
 
 /* ---------------- Global scroll state ---------------- */
 const scroll = { p: 0, mood: "idle" as "idle" | "rose" | "gold" | "sky", pulse: 0, hover: 0, clickPulse: 0 };
@@ -530,7 +536,7 @@ function CursorGlow() {
 
     const xDot  = gsap.quickTo(dot,  "x", { duration: 0.06 });
     const yDot  = gsap.quickTo(dot,  "y", { duration: 0.06 });
-    const xRing = gsap.quickTo(ring, "x", { duration: 0.28, ease: "power2.out" });
+    const xRing = gsap.quickTo(ring, "x", { duration: 0.08, ease: "power2.out" });
     const yRing = gsap.quickTo(ring, "y", { duration: 0.28, ease: "power2.out" });
     const xGlow = gsap.quickTo(glow, "x", { duration: 0.55, ease: "power2.out" });
     const yGlow = gsap.quickTo(glow, "y", { duration: 0.55, ease: "power2.out" });
